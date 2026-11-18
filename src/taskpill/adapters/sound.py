@@ -30,10 +30,12 @@ class WinSoundPlayer:
         self._folder = folder
 
     def play(self, name: str) -> None:
-        import winsound
-
         path = self._folder / f"{name}.wav"
         if not path.is_file():
+            return
+        try:
+            import winsound  # Windows only; elsewhere this player stays silent
+        except ImportError:
             return
         try:
             flags = winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT
