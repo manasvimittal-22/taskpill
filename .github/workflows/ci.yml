@@ -26,4 +26,3 @@ jobs:
         run: ruff check src tests hook
       - name: Test
         run: pytest
-

@@ -55,6 +55,8 @@ def test_the_export_holds_only_the_app():
     assert not any(n.startswith(("vscode-extension/", "src/taskpill.egg-info")) for n in names)
     readme = export["README.md"].decode("utf-8")
     assert "plan.md" not in readme and "CLAUDE.md" not in readme
+    # Manasvi, 2026-11-17: no developer section in the public README
+    assert "For developers" not in readme and readme.endswith("SECURITY.md).\n")
     ci = export[".github/workflows/ci.yml"].decode("utf-8")
     assert "vscode-extension" not in ci
 

@@ -70,37 +70,3 @@ TaskPill is new. Windows is supported now; macOS is planned.
 ## License
 
 [MIT](LICENSE). Free to use, change and share. Found a security problem? See [SECURITY.md](SECURITY.md).
-
----
-
-## For developers
-
-Set up once, then run the tests:
-
-```
-py -3 -m venv .venv ; .venv\Scripts\python -m pip install -e ".[dev]" ; .venv\Scripts\python -m pytest
-```
-
-See the pills with a scripted demo (two pretend sessions, about 30 seconds; no Claude Code needed):
-
-```
-.venv\Scripts\python -m taskpill.main --demo
-```
-
-Run the real app. The first time, it asks to connect to Claude Code (it adds hooks to `~/.claude/settings.json` after making a backup). Disconnect any time from the tray icon's menu.
-
-```
-.venv\Scripts\python -m taskpill.main
-```
-
-Build the installer (needs Inno Setup 6: `winget install JRSoftware.InnoSetup`):
-
-```
-.venv\Scripts\python -m pip install -e ".[build]" ; powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
-```
-
-This makes `dist\TaskPill-Setup-<version>.exe` and `dist\TaskPill-<version>-portable.zip`. Pushing a version tag (`git tag v0.1.0 ; git push origin v0.1.0`) builds the installer on GitHub and attaches it to a release.
-
-Re-make the README pictures after a design change (on Windows, for the real fonts): `.venv\Scripts\python packaging\make_readme_images.py`. The sounds come from `packaging\make_sounds.py`.
-
-

@@ -119,7 +119,7 @@ def build_export() -> tuple[dict[str, bytes], list[str]]:
             # file and its test mention the markers, and stripping them broke both
             # in the first public commit (caught by the public CI, 2026-11-17).
             if path.suffix.lower() in MARKED_SUFFIXES:
-                text = strip_private(text)
+                text = strip_private(text).rstrip() + "\n"  # no blank tail (\r\n too)
             findings += scan(rel, text)
             data = text.encode("utf-8")
         export[rel] = data
