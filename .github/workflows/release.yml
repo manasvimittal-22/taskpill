@@ -1,0 +1,55 @@
+name: Release
+
+# Runs only when a version tag is pushed (e.g. `git tag v0.1.0 ; git push origin v0.1.0`).
+# Builds the Windows installer and the portable .zip and attaches both to a
+# GitHub Release. (The VS Code
+# extension is on hold since 2026-11-17, so it isn't built or attached.) Release files don't use Actions storage; nothing is uploaded as
+# an Actions artifact.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check the tag matches the app version
+        shell: pwsh
+        run: |
+          $version = python -c "import sys; sys.path.insert(0, 'src'); import taskpill; print(taskpill.__version__)"
+          if ("v$version" -ne "${{ github.ref_name }}") { throw "Tag ${{ github.ref_name }} doesn't match version $version" }
+
+      - name: Install
+        run: python -m pip install -e ".[dev,build]"
+
+      - name: Test
+        run: python -m pytest
+
+      - name: Make sure Inno Setup is there
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+
+      - name: Build the installer
+        shell: pwsh
+        run: ./packaging/build_windows.ps1
+
+      - name: Publish the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" `
+            (Get-ChildItem dist\TaskPill-Setup-*.exe).FullName `
+            (Get-ChildItem dist\TaskPill-*-portable.zip).FullName `
+            --title "TaskPill ${{ github.ref_name }}" --generate-notes

@@ -1,0 +1,18 @@
+TaskPill (portable)
+===================
+
+This folder is TaskPill without an installer. Nothing is written outside it,
+except TaskPill's own settings (%APPDATA%\TaskPill) and, when you click
+Connect, a few hooks in Claude Code's settings (~/.claude/settings.json; a
+backup is made first).
+
+Start:      double-click TaskPill.exe, then click Connect.
+Move it:    you can move this folder; start TaskPill.exe once from the new
+            place and it updates its hooks.
+Updates:    TaskPill tells you when a new version is out and opens the
+            download page.
+Remove it:  right-click the TaskPill tray icon -> Disconnect from Claude Code,
+            quit TaskPill, then delete this folder.
+
+Windows may warn "Windows protected your PC" because TaskPill isn't signed
+yet: click More info -> Run anyway.
