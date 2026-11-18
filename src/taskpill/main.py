@@ -121,11 +121,11 @@ def run(demo: bool) -> int:
     try:
         return app.exec()
     finally:
-        _exit_watchdog()
+        taskpill.shutdown()  # the icon and pill vanish at once
+        _exit_watchdog(1.0)
         if server is not None:
             server.stop()
             remove_runtime_if_owned(runtime, os.getpid())
-        taskpill.shutdown()
         lock.unlock()
 
 

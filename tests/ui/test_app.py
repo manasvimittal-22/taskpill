@@ -344,3 +344,18 @@ def test_from_source_there_is_no_update_check(qtbot, env):
     window = app.open_settings()
     assert "come with git" in window.update_text.text()
     assert window.update_button.isHidden()
+
+
+def test_tray_menu_items_really_fire_their_signals(qtbot, env):
+    """Regression: the menu items were wired to Signal objects and did nothing."""
+    app, _, _ = build(qtbot, env)
+    hits = []
+    app.tray.connect_toggled.connect(lambda: hits.append("connect"))
+    app.tray.settings_requested.connect(lambda: hits.append("settings"))
+    app.tray.reset_position_requested.connect(lambda: hits.append("reset"))
+    app.tray.quit_requested.connect(lambda: hits.append("quit"))
+    for action in app.tray._menu.actions():
+        if action.text() in ("Settings…", "Reset position", "Quit TaskPill"):
+            action.trigger()
+    app.tray._connect_action.trigger()
+    assert hits == ["settings", "reset", "quit", "connect"]
