@@ -68,6 +68,7 @@ class SettingsWindow(QWidget):
     reset_size_requested = Signal()
     update_check_requested = Signal()
     update_install_requested = Signal()
+    quit_requested = Signal()
 
     def __init__(self, settings: Settings, pal: Palette, connected: bool,
                  parent: QWidget | None = None):
@@ -132,7 +133,10 @@ class SettingsWindow(QWidget):
         root.addSpacing(4)
         root.addWidget(self.auto_quit)
         root.addWidget(_label("Claude Code starts TaskPill again when you next use it.", "hint"))
-
+        self.quit_button = QPushButton("Quit TaskPill")
+        self.quit_button.setFixedWidth(RESET_BUTTON_WIDTH)
+        self.quit_button.clicked.connect(self.quit_requested)
+        self._row(root, "Close TaskPill now.", self.quit_button, role="hint")
 
         root.addSpacing(14)
         root.addWidget(_label("Claude Code", "section"))

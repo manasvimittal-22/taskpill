@@ -14,6 +14,7 @@ import os
 import secrets
 import signal
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -60,6 +61,14 @@ def make_update_service() -> UpdateService | None:
         launch=lambda path: os.startfile(str(path)),  # noqa: S606 (our own installer)
         wall_clock=time.time,
     )
+
+
+def _exit_watchdog(seconds: float = 3.0) -> None:
+    """After Quit, make sure the process really ends. If anything still holds it open
+    (a stuck thread or handle), it was left running in Task Manager; this ends it."""
+    timer = threading.Timer(seconds, os._exit, args=(0,))
+    timer.daemon = True  # a normal exit isn't delayed by it
+    timer.start()
 
 
 def run(demo: bool) -> int:
@@ -112,6 +121,7 @@ def run(demo: bool) -> int:
     try:
         return app.exec()
     finally:
+        _exit_watchdog()
         if server is not None:
             server.stop()
             remove_runtime_if_owned(runtime, os.getpid())

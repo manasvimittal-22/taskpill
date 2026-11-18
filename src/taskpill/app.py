@@ -185,8 +185,10 @@ class TaskPillApp(QObject):
         if self.is_connected():
             with contextlib.suppress(SettingsFileError, OSError):
                 self._installer.install()  # no-op unless TaskPill moved
-        elif not self.settings.connect_asked:
-            self.ask_to_connect()
+        else:
+            # Not connected: open Settings, which has the Connect button, so a new user
+            # sees what to do (Manasvi, 2026-11-17). Shown at every start until connected.
+            self.open_settings()
 
     def ask_to_connect(self) -> ConnectDialog:
         dialog = ConnectDialog(self._palette(), self._connect)
@@ -260,6 +262,7 @@ class TaskPillApp(QObject):
             window.reset_size_requested.connect(self.reset_size)
             window.update_check_requested.connect(self.check_updates_now)
             window.update_install_requested.connect(self.install_update)
+            window.quit_requested.connect(self._quit_app)
             self._settings_window = window
         # A window built earlier may show a stale "Connected" (bug found 2026-11-17).
         self._settings_window.set_connected(self.is_connected())

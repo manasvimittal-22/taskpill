@@ -39,22 +39,29 @@ def build(qtbot, env, demo=False):
     return app, clock, quits
 
 
-def test_first_start_asks_to_connect_once(qtbot, env):
+def test_start_when_not_connected_opens_settings(qtbot, env):
     app, _, _ = build(qtbot, env)
     app.start()
-    dialog = app._connect_dialog
-    assert dialog is not None and dialog.isVisible()
-    dialog.reject()  # "Not now"
-    assert SettingsStore(env["settings"]).load().connect_asked
+    window = app._settings_window
+    assert window is not None and window.isVisible()
+    assert window.status_text.text() == "Not connected"
+    assert window.connect_button.text() == "Connect"
+    window.close()
 
-    again, _, _ = build(qtbot, env)
-    again.start()
-    assert again._connect_dialog is None
+
+def test_settings_quit_button_quits(qtbot, env):
+    app, _, quits = build(qtbot, env)
+    window = app.open_settings()
+    window.quit_button.click()
+    assert quits == [True]
+    window.close()
 
 
 def test_connect_installs_the_hooks(qtbot, env):
     app, _, _ = build(qtbot, env)
     app.start()
+    app._settings_window.close()
+    app.ask_to_connect()
     app._connect_dialog.connect_button.click()
     assert app.is_connected()
     hooks = json.loads(env["claude"].read_text(encoding="utf-8"))["hooks"]
@@ -67,7 +74,8 @@ def test_connect_problem_is_shown_and_nothing_changes(qtbot, env):
     env["claude"].write_text("{broken", encoding="utf-8")
     app, _, _ = build(qtbot, env)
     app.start()
-    dialog = app._connect_dialog
+    app._settings_window.close()
+    dialog = app.ask_to_connect()
     dialog.connect_button.click()
     assert dialog.isVisible()
     assert "isn't valid JSON" in dialog.error.text()
