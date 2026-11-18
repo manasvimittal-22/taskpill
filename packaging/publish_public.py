@@ -7,6 +7,8 @@ gets a clean copy with its own history:
 
 1. Only the files in ``INCLUDE`` are copied. Plans, notes, CLAUDE.md, the
    worklog and the on-hold VS Code extension never leave this repo.
+2. Inside copied text files, anything between ``private:start`` and
+   ``private:end`` markers is removed (e.g. README links to internal docs).
 3. Everything that would be published is scanned for secrets and personal
    details first. One finding stops the whole run, and nothing is written.
 4. Files in the public folder that are no longer in the export are deleted
@@ -42,7 +44,9 @@ EXCLUDE_FILES = {"tests/test_vscode_contract.py"}  # tests the on-hold extension
 TEXT_SUFFIXES = {".py", ".md", ".toml", ".yml", ".yaml", ".iss", ".ps1", ".txt", ".spec",
                  ".gitignore", ".gitattributes", ""}
 
-INLINE_PRIVATE = re.compile(r"", re.S)
+MARKED_SUFFIXES = {".md", ".yml", ".yaml"}  # where private markers may appear
+PRIVATE_BLOCK = re.compile(r"[^\n]*private:start.*?private:end[^\n]*\n?", re.S)
+INLINE_PRIVATE = re.compile(r"<!-- private:start -->.*?<!-- private:end -->", re.S)
 
 # What must never be published. Each finding names the file and line.
 SECRET_PATTERNS = {
@@ -110,7 +114,12 @@ def build_export() -> tuple[dict[str, bytes], list[str]]:
         rel = path.relative_to(ROOT).as_posix()
         data = path.read_bytes()
         if is_text(path):
-            text = strip_private(data.decode("utf-8"))
+            text = data.decode("utf-8")
+            # Markers are only used in docs and CI files. Never strip code: this very
+            # file and its test mention the markers, and stripping them broke both
+            # in the first public commit (caught by the public CI, 2026-11-17).
+            if path.suffix.lower() in MARKED_SUFFIXES:
+                text = strip_private(text)
             findings += scan(rel, text)
             data = text.encode("utf-8")
         export[rel] = data

@@ -11,7 +11,8 @@ spec.loader.exec_module(pub)
 
 
 def test_private_blocks_are_removed():
-            "Status. Done.\n")
+    text = ("keep\n  # private:start (why)\n  secret job\n  # private:end\nkeep too\n"
+            "Status.<!-- private:start --> See plan.md.<!-- private:end --> Done.\n")
     out = pub.strip_private(text)
     assert "secret job" not in out and "plan.md" not in out
     assert out == "keep\nkeep too\nStatus. Done.\n"
@@ -60,3 +61,14 @@ def test_the_export_holds_only_the_app():
 
 def test_it_never_writes_inside_this_repo(capsys):
     assert pub.main([str(ROOT / "public-copy")]) == 2
+
+
+def test_every_exported_python_file_still_compiles():
+    """Bug (2026-11-17): stripping private markers inside code broke the exporter and
+    its test in the first public commit; the public CI caught it."""
+    export, _ = pub.build_export()
+    for rel, data in export.items():
+        if rel.endswith((".py", ".spec")):
+            compile(data.decode("utf-8"), rel, "exec")
+    # and the exporter's own marker handling survives the export intact
+    assert b"PRIVATE_BLOCK = re.compile(" in export["packaging/publish_public.py"]
