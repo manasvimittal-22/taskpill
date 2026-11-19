@@ -4,8 +4,10 @@ All are keyboard-usable (Tab to focus, Space/Enter/arrows to change)."""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from PySide6.QtCore import QRectF, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QKeyEvent, QMouseEvent, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QKeyEvent, QMouseEvent, QPainter, QPen
 from PySide6.QtWidgets import QAbstractButton, QSizePolicy, QWidget
 
 from taskpill.ui import motion
@@ -225,4 +227,59 @@ class Segmented(QWidget):
             p.setPen(qcolor(pal.text) if selected else qcolor(pal.text_soft))
             p.setFont(self._bold if selected else self._font)
             p.drawText(seg, Qt.AlignmentFlag.AlignCenter, label)
+        p.end()
+
+
+class KeyCaps(QWidget):
+    """Keys drawn as small caps in a row: Ctrl Alt Space. Read-only; its accessible
+    name spells the combination out ("Ctrl plus Alt plus Space")."""
+
+    HEIGHT = 22
+    GAP = 4
+    PAD = 7
+
+    def __init__(self, pal: Palette, keys: Sequence[str], parent: QWidget | None = None):
+        super().__init__(parent)
+        self._pal = pal
+        self._keys = list(keys)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.setAccessibleName(" plus ".join(self._keys))
+        self.setFixedSize(self.sizeHint())
+
+    def set_palette(self, pal: Palette) -> None:
+        self._pal = pal
+        self.update()
+
+    def _font(self) -> QFont:
+        return ui_font(11.5, QFont.Weight.DemiBold)
+
+    def _cap_widths(self) -> list[float]:
+        metrics = QFontMetricsF(self._font())
+        return [max(self.HEIGHT, metrics.horizontalAdvance(k) + 2 * self.PAD) for k in self._keys]
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        widths = self._cap_widths()
+        return QSize(round(sum(widths) + self.GAP * (len(widths) - 1)) + 1, self.HEIGHT + 1)
+
+    def paintEvent(self, _event) -> None:  # noqa: N802
+        pal = self._pal
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setFont(self._font())
+        x = 0.5
+        for key, width in zip(self._keys, self._cap_widths(), strict=True):
+            cap = QRectF(x, 0.5, width, self.HEIGHT - 1)
+            face = qcolor(pal.text)
+            face.setAlphaF(0.07 if pal.dark else 0.05)
+            edge = qcolor(pal.hairline)
+            p.setBrush(face)
+            p.setPen(QPen(edge.lighter(150) if pal.dark else edge.darker(120), 1))
+            p.drawRoundedRect(cap, 6, 6)
+            # the cap's lower lip: a key has a little depth
+            lip = QRectF(cap.left() + 5, cap.bottom() + 0.5, cap.width() - 10, 0)
+            p.setPen(QPen(edge, 1))
+            p.drawLine(lip.topLeft(), lip.topRight())
+            p.setPen(qcolor(pal.text))
+            p.drawText(cap, Qt.AlignmentFlag.AlignCenter, key)
+            x += width + self.GAP
         p.end()

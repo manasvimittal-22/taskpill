@@ -43,8 +43,10 @@ class Progress:
         self._steps = 0
         self._complete = False
 
-    def start(self, now: float) -> None:
-        """Begin a new prompt from 0%."""
+    def start(self, now: float, config: ProgressConfig | None = None) -> None:
+        """Begin a new prompt from 0%. A new curve only ever takes effect here."""
+        if config is not None:
+            self._config = config
         self._active_seconds = 0.0
         self._running_since = now
         self._steps = 0

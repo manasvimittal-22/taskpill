@@ -13,6 +13,7 @@ from taskpill.domain.events import EventType, HookEvent
 from taskpill.domain.progress import ProgressConfig
 from taskpill.domain.session import Session, SessionState
 from taskpill.services.clock import Clock
+from taskpill.services.task_history import TaskHistory
 
 MAX_SESSIONS = 20
 FORGET_IDLE_AFTER_SECONDS = 12 * 60 * 60
@@ -33,11 +34,13 @@ class SessionStore:
         clock: Clock,
         progress_config: ProgressConfig | None = None,
         max_sessions: int = MAX_SESSIONS,
+        task_history: TaskHistory | None = None,
     ) -> None:
         if max_sessions < 1:
             raise ValueError("max_sessions must be at least 1")
         self._clock = clock
         self._progress_config = progress_config
+        self._task_history = task_history
         self._max_sessions = max_sessions
         self._sessions: dict[str, Session] = {}
         self._listeners = _Listeners(changed=[], removed=[])
@@ -61,6 +64,11 @@ class SessionStore:
         """Sessions that should have a pill, oldest first (stable order on screen)."""
         return [s for s in self.all() if s.is_visible]
 
+    def longest_waiting(self) -> Session | None:
+        """The session that has needed the user for longest (the shortcut's target)."""
+        waiting = [s for s in self._sessions.values() if s.state is SessionState.NEEDS_YOU]
+        return min(waiting, key=lambda s: s.needs_you_since, default=None)
+
     def has_active(self) -> bool:
         """True while anything is on screen. Used for the auto-quit timer."""
         return any(s.is_visible for s in self._sessions.values())
@@ -77,9 +85,22 @@ class SessionStore:
         if session is None:
             session = self._create(event.session_id, now)
 
+        was_done = session.state is SessionState.DONE
         if session.apply(event, now):
+            self._learn_from(event, session, was_done, now)
             self._emit_changed(session)
         return session
+
+    def _learn_from(self, event: HookEvent, session: Session, was_done: bool, now: float) -> None:
+        """A task that ended with a normal Stop teaches the % curve how long tasks take."""
+        if (
+            self._task_history is not None
+            and event.type is EventType.STOP
+            and session.state is SessionState.DONE
+            and not was_done
+            and session.measured
+        ):
+            self._task_history.record(session.progress.active_seconds(now))
 
     def acknowledge(self, session_id: str) -> bool:
         """The user clicked a Done pill."""
@@ -110,7 +131,8 @@ class SessionStore:
     def _create(self, session_id: str, now: float) -> Session:
         if len(self._sessions) >= self._max_sessions:
             self._evict_one()
-        session = Session(session_id, now, self._progress_config)
+        source = self._task_history.progress_config if self._task_history else None
+        session = Session(session_id, now, self._progress_config, source)
         self._sessions[session_id] = session
         return session
 

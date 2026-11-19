@@ -22,6 +22,7 @@ from PySide6.QtCore import QLockFile, QObject, QTimer, Signal
 from PySide6.QtWidgets import QApplication
 
 from taskpill import __version__, paths
+from taskpill.adapters.duration_store import DurationStore
 from taskpill.adapters.event_server import EventServer
 from taskpill.adapters.hook_command import resolve_hook_command
 from taskpill.adapters.hooks_installer import HooksInstaller, SettingsFileError
@@ -31,6 +32,7 @@ from taskpill.adapters.sound import default_player
 from taskpill.app import TaskPillApp
 from taskpill.platform import create_platform
 from taskpill.services.clock import SystemClock
+from taskpill.services.task_history import TaskHistory
 from taskpill.services.updates import UpdateService
 
 
@@ -93,6 +95,7 @@ def run(demo: bool) -> int:
         sound_player=default_player(),
         updates=None if demo else make_update_service(),
         portable=is_portable(),
+        task_history=None if demo else TaskHistory(DurationStore(config / "history.json")),
     )
     bridge = EventBridge()
     bridge.received.connect(taskpill.handle_event)

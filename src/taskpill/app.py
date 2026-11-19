@@ -12,7 +12,7 @@ import time
 from collections.abc import Callable
 from dataclasses import replace
 
-from PySide6.QtCore import QObject, QPoint, QRect, QTimer, QUrl
+from PySide6.QtCore import QObject, QPoint, QRect, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import QApplication
 
@@ -20,13 +20,14 @@ from taskpill import __version__
 from taskpill.adapters.hooks_installer import HooksInstaller, SettingsFileError
 from taskpill.adapters.settings_store import Settings, SettingsStore
 from taskpill.adapters.sound import SilentPlayer, SoundPlayer
-from taskpill.domain.events import HookEvent
+from taskpill.domain.events import EventType, HookEvent
 from taskpill.domain.session import SessionState
-from taskpill.platform.base import Platform
+from taskpill.platform.base import Platform, SystemPrefs
 from taskpill.services.clock import Clock
 from taskpill.services.idle_quit import IdleQuit
 from taskpill.services.session_store import SessionStore
 from taskpill.services.sound_cues import Cue, SoundCues
+from taskpill.services.task_history import TaskHistory
 from taskpill.services.updates import UpdateService, UpdateState, UpdateStatus
 from taskpill.ui.connect_dialog import ConnectDialog
 from taskpill.ui.controller import PillController
@@ -38,7 +39,7 @@ from taskpill.ui.popups import PillMenu
 from taskpill.ui.settings_window import SettingsWindow
 from taskpill.ui.shell_style import shell_stylesheet
 from taskpill.ui.snapshot import build_snapshot
-from taskpill.ui.theme import Palette, palette_for, system_is_dark
+from taskpill.ui.theme import Palette, high_contrast_palette, palette_for, system_is_dark
 from taskpill.ui.tray import Tray
 from taskpill.ui.view_model import PillKind, PillModel
 
@@ -46,9 +47,12 @@ IDLE_CHECK_MS = 30_000
 UPDATE_FIRST_CHECK_MS = 20_000  # a little after start, so it never slows start-up
 UPDATE_TICK_MS = 60 * 60 * 1000  # look every hour whether a day has passed
 PRUNE_MS = 60_000
+PREFS_MS = 4_000  # how often we look at Windows' reduce-motion and high-contrast choices
 
 
 class TaskPillApp(QObject):
+    jump_requested = Signal()  # the global shortcut was pressed (emitted from its own thread)
+
     def __init__(
         self,
         app: QApplication,
@@ -63,6 +67,7 @@ class TaskPillApp(QObject):
         sound_player: SoundPlayer | None = None,
         updates: UpdateService | None = None,
         portable: bool = False,
+        task_history: TaskHistory | None = None,
     ) -> None:
         super().__init__()
         self._app = app
@@ -75,9 +80,11 @@ class TaskPillApp(QObject):
         self.settings: Settings = settings_store.load()
         self._settings_window: SettingsWindow | None = None
         self._connect_dialog: ConnectDialog | None = None
+        self.hotkey_active = False  # True while the jump shortcut is really listening
 
+        self._prefs: SystemPrefs = self._read_prefs()
         pal = self._palette()
-        self.store = SessionStore(clock)
+        self.store = SessionStore(clock, task_history=task_history)
         self.row = PillRow(self._row_options(), pal,
                            dims=Dims(self.settings.pill_width, self.settings.pill_height))
         self._menu: PillMenu | None = None
@@ -92,6 +99,7 @@ class TaskPillApp(QObject):
             on_models=self._publish_models,
             on_cue=self._on_cue,
         )
+        self.jump_requested.connect(self.jump_to_waiting)
         self.driver = PlatformDriver(platform, self.row, self.controller)
         self.driver.set_hide_in_fullscreen(self.settings.hide_in_fullscreen)
         self.controller.set_needs_you_in_fullscreen(self.settings.needs_you_in_fullscreen)
@@ -121,6 +129,7 @@ class TaskPillApp(QObject):
                              0 if demo else self.settings.auto_quit_minutes)
         self._every(IDLE_CHECK_MS, self._check_idle)
         self._every(PRUNE_MS, self.store.prune)
+        self._every(PREFS_MS, self._check_system_prefs)
 
         hints = QGuiApplication.styleHints()
         hints.colorSchemeChanged.connect(lambda _scheme: self._apply_look())
@@ -128,11 +137,33 @@ class TaskPillApp(QObject):
 
     # ---- events ------------------------------------------------------------------------
     def handle_event(self, event: HookEvent) -> None:
+        if event.type is EventType.USER_PROMPT_SUBMIT and event.pid_chain:
+            # The window in front is where the prompt was typed: remember it for this session.
+            with contextlib.suppress(Exception):
+                self._platform.active.note_prompt(event.pid_chain)
         self.store.apply(event)
 
     def click(self, session_id: str) -> None:
         """A click from outside the taskbar (the VS Code status bar)."""
         self.controller.click(session_id)
+
+    def jump_to_waiting(self) -> None:
+        """The shortcut: go to the session that has needed you longest, like clicking its pill."""
+        session = self.store.longest_waiting()
+        if session is not None:
+            self.controller.click(session.session_id)
+
+    def _apply_hotkey(self) -> None:
+        """Listen for the jump shortcut while it is switched on (and tell Settings the result)."""
+        hotkey = self._platform.hotkey
+        if self.settings.jump_hotkey and not self._demo:
+            if not self.hotkey_active:
+                self.hotkey_active = hotkey.register(self.jump_requested.emit)
+        elif self.hotkey_active or not self.settings.jump_hotkey:
+            hotkey.unregister()
+            self.hotkey_active = False
+        if self._settings_window is not None:
+            self._settings_window.set_hotkey_status(self.hotkey_active)
 
     def set_publisher(self, publish: Callable[[dict], None]) -> None:
         """Where snapshots go (the event server's /stream)."""
@@ -179,6 +210,7 @@ class TaskPillApp(QObject):
         """Refresh our hooks if connected; ask once if not. Check for updates soon."""
         if self._demo:
             return
+        self._apply_hotkey()
         if self.updates is not None:
             QTimer.singleShot(UPDATE_FIRST_CHECK_MS, self._check_updates_if_due)
             self._every(UPDATE_TICK_MS, self._check_updates_if_due)
@@ -266,6 +298,8 @@ class TaskPillApp(QObject):
             self._settings_window = window
         # A window built earlier may show a stale "Connected" (bug found 2026-11-17).
         self._settings_window.set_connected(self.is_connected())
+        self._settings_window.set_hotkey_status(self.hotkey_active)
+        self._settings_window.set_system_motion(self._prefs.reduce_motion)
         self._show_update_status()
         self._settings_window.show()
         self._settings_window.raise_()
@@ -280,6 +314,7 @@ class TaskPillApp(QObject):
         self.driver.set_hide_in_fullscreen(settings.hide_in_fullscreen)
         self.controller.set_needs_you_in_fullscreen(settings.needs_you_in_fullscreen)
         self.sounds.set_enabled(settings.sound_needs_you, settings.sound_done)
+        self._apply_hotkey()
         if not self._demo:
             self.idle.set_minutes(settings.auto_quit_minutes)
         self._apply_look()
@@ -293,12 +328,34 @@ class TaskPillApp(QObject):
 
     def _row_options(self) -> RowOptions:
         s = self.settings
-        return RowOptions(anchor=self._platform.placement.anchor, glow=s.glow,
+        # Windows' own choices add to ours: its "animation off" means no motion here either,
+        # and a high-contrast theme drops the soft glow (the dot and the edge still show).
+        return RowOptions(anchor=self._platform.placement.anchor,
+                          glow=s.glow and self._prefs.high_contrast is None,
                           expand_needs_you=s.expand_needs_you, dot=s.dot,
-                          reduced_motion=s.reduced_motion)
+                          reduced_motion=s.reduced_motion or self._prefs.reduce_motion)
+
+    def _read_prefs(self) -> SystemPrefs:
+        try:
+            return self._platform.prefs.read()
+        except Exception:  # noqa: BLE001 (a failed look at Windows must never stop the pill)
+            return getattr(self, "_prefs", SystemPrefs())
+
+    def _check_system_prefs(self) -> None:
+        """Windows' reduce-motion or high-contrast choice changed: follow it right away."""
+        prefs = self._read_prefs()
+        if prefs == self._prefs:
+            return
+        self._prefs = prefs
+        self.row.set_options(self._row_options())
+        self._apply_look()
+        if self._settings_window is not None:
+            self._settings_window.set_system_motion(prefs.reduce_motion)
 
     def _palette(self) -> Palette:
         s = self.settings
+        if self._prefs.high_contrast is not None:
+            return high_contrast_palette(self._prefs.high_contrast)
         return palette_for(system_is_dark(), s.accent, s.needs_you_color, s.done_color,
                            s.limited_color)
 

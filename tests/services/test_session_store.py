@@ -23,6 +23,40 @@ def test_creates_sessions_on_first_event(store):
     assert store.visible() == []
 
 
+def test_longest_waiting_is_the_session_that_needed_you_first(store, clock):
+    store.apply(make_event("UserPromptSubmit", "a"))
+    store.apply(make_event("UserPromptSubmit", "b"))
+    store.apply(make_event("PermissionRequest", "b", tool_name="Bash", tool_input={}))
+    clock.advance(30)
+    store.apply(make_event("PermissionRequest", "a", tool_name="Bash", tool_input={}))
+    assert store.longest_waiting().session_id == "b"
+    # a repeated prompt for the same session doesn't restart its wait
+    clock.advance(30)
+    store.apply(make_event("Notification", "b", notification_type="agent_needs_input"))
+    assert store.longest_waiting().session_id == "b"
+
+
+def test_longest_waiting_ignores_sessions_that_do_not_need_you(store):
+    assert store.longest_waiting() is None
+    store.apply(make_event("UserPromptSubmit", "a"))
+    store.apply(make_event("UserPromptSubmit", "b"))
+    store.apply(make_event("Stop", "b"))
+    assert store.longest_waiting() is None
+
+
+def test_the_wait_starts_again_after_answering(store, clock):
+    store.apply(make_event("UserPromptSubmit", "a"))
+    store.apply(make_event("PermissionRequest", "a", tool_name="Bash", tool_input={}))
+    store.apply(make_event("UserPromptSubmit", "b"))
+    clock.advance(10)
+    store.apply(make_event("PermissionRequest", "b", tool_name="Bash", tool_input={}))
+    clock.advance(10)
+    store.apply(make_event("PostToolUse", "a", tool_name="Bash"))  # a answered, works again
+    clock.advance(10)
+    store.apply(make_event("PermissionRequest", "a", tool_name="Bash", tool_input={}))
+    assert store.longest_waiting().session_id == "b"
+
+
 def test_notifies_only_on_visible_changes(store):
     changed, _ = collect(store)
     store.apply(make_event("SessionStart", "a"))

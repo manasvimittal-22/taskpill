@@ -48,6 +48,8 @@ class Settings:
     # sounds (Manasvi, 2026-11-17): a subtle chime for each, each can be turned off
     sound_needs_you: bool = True
     sound_done: bool = True
+    # Ctrl+Alt+Space jumps to the session that needs you, from any app (Manasvi, 2026-11-18)
+    jump_hotkey: bool = True
     # updates (Phase 10): the installed app asks GitHub once a day
     check_updates: bool = True
     last_update_check: float = 0.0  # wall-clock seconds of the last check

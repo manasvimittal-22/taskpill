@@ -24,6 +24,7 @@ Rules learned from how Claude Code sends events:
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from enum import Enum
 
 from taskpill.domain.events import EventType, HookEvent
@@ -66,7 +67,11 @@ _BUSY = (SessionState.WORKING, SessionState.NEEDS_YOU)
 
 class Session:
     def __init__(
-        self, session_id: str, now: float, progress_config: ProgressConfig | None = None
+        self,
+        session_id: str,
+        now: float,
+        progress_config: ProgressConfig | None = None,
+        config_source: Callable[[], ProgressConfig] | None = None,
     ) -> None:
         self.session_id = session_id
         self.state = SessionState.IDLE
@@ -78,7 +83,17 @@ class Session:
         self.created_at = now
         self.last_event_at = now
         self.task_started_at = now
+        self.needs_you_since = now  # when it last started waiting for the user
         self.progress = Progress(progress_config)
+        self._config_source = config_source
+        # True when we saw this task's prompt, so its duration is complete and can teach
+        # the % curve. False when we joined mid-task or Claude carried on after Stop.
+        self.measured = False
+
+    def _start_progress(self, now: float, measured: bool) -> None:
+        config = self._config_source() if self._config_source else None
+        self.progress.start(now, config)
+        self.measured = measured
 
     # ---- derived ---------------------------------------------------------
     @property
@@ -135,7 +150,7 @@ class Session:
         self.step = "Thinking"
         self.message = ""
         self.task_started_at = now
-        self.progress.start(now)
+        self._start_progress(now, measured=True)
         return True
 
     def _on_tool(self, event: HookEvent, now: float) -> bool:
@@ -208,13 +223,15 @@ class Session:
         if self.state in (SessionState.IDLE, SessionState.DONE):
             # We missed the prompt (the app started mid-task) or Claude carried
             # on after Stop: start a fresh estimate.
-            self.progress.start(now)
+            self._start_progress(now, measured=False)
             self.task_started_at = now
             self.state = SessionState.WORKING
         elif self.state in (SessionState.NEEDS_YOU, SessionState.LIMITED):
             self.progress.resume(now)
 
     def _needs_you(self, message: str, now: float) -> None:
+        if self.state is not SessionState.NEEDS_YOU:
+            self.needs_you_since = now
         self.state = SessionState.NEEDS_YOU
         self.message = message
         self.progress.pause(now)

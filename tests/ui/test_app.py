@@ -39,6 +39,151 @@ def build(qtbot, env, demo=False):
     return app, clock, quits
 
 
+class NotingPlatform:
+    """The fallback platform, but its active-window probe records note_prompt calls."""
+
+    def __init__(self, fail=False):
+        self.platform = fallback_platform()
+        self.noted = []
+        self.fail = fail
+        outer = self
+
+        class Active:
+            def foreground(self):
+                return None
+
+            def window_for(self, chain, project):
+                return None
+
+            def note_prompt(self, chain):
+                if outer.fail:
+                    raise OSError("boom")
+                outer.noted.append(tuple(chain))
+
+        self.platform.active = Active()
+
+
+def build_with(qtbot, env, platform):
+    app = TaskPillApp(
+        QApplication.instance(), platform,
+        SettingsStore(env["settings"]),
+        HooksInstaller(env["claude"], HookCommand("hook.exe", ("--app", "TaskPill.exe"))),
+        FakeClock(), quit_app=lambda: None, show_tray=False,
+    )
+    qtbot.addWidget(app.row)
+    return app
+
+
+def test_a_prompt_makes_the_app_remember_the_window_in_front(qtbot, env):
+    fake = NotingPlatform()
+    app = build_with(qtbot, env, fake.platform)
+    app.handle_event(make_event("UserPromptSubmit", "a", pid_chain=[10, 20, 30]))
+    app.handle_event(make_event("PreToolUse", "a", tool_name="Read", pid_chain=[10, 20, 30]))
+    app.handle_event(make_event("UserPromptSubmit", "b"))  # no chain: nothing to remember
+    assert fake.noted == [(10, 20, 30)]
+
+
+def test_a_failing_window_probe_never_stops_the_event(qtbot, env):
+    app = build_with(qtbot, env, NotingPlatform(fail=True).platform)
+    app.handle_event(make_event("UserPromptSubmit", "a", pid_chain=[1, 2]))
+    assert app.store.get("a") is not None
+
+
+class FakeHotkey:
+    def __init__(self, free=True):
+        self.free = free
+        self.callback = None
+        self.registered = 0
+        self.unregistered = 0
+
+    def register(self, on_press):
+        self.registered += 1
+        if not self.free:
+            return False
+        self.callback = on_press
+        return True
+
+    def unregister(self):
+        self.unregistered += 1
+        self.callback = None
+
+
+def hotkey_app(qtbot, env, hotkey, **settings):
+    platform = fallback_platform()
+    platform.hotkey = hotkey
+    env["settings"].parent.mkdir(parents=True, exist_ok=True)
+    SettingsStore(env["settings"]).save(Settings(connect_asked=True, **settings))
+    app = build_with(qtbot, env, platform)
+    app.start()
+    return app
+
+
+def test_the_shortcut_starts_listening_at_start(qtbot, env):
+    hotkey = FakeHotkey()
+    app = hotkey_app(qtbot, env, hotkey)
+    assert app.hotkey_active and hotkey.callback is not None
+
+
+def test_pressing_the_shortcut_goes_to_the_session_waiting_longest(qtbot, env):
+    hotkey = FakeHotkey()
+    app = hotkey_app(qtbot, env, hotkey)
+    focused = []
+    app.controller._focus = lambda s: focused.append(s.session_id)
+    app.handle_event(make_event("UserPromptSubmit", "a"))
+    app.handle_event(make_event("PermissionRequest", "a", tool_name="Bash", tool_input={}))
+    app.handle_event(make_event("UserPromptSubmit", "b"))
+    app.handle_event(make_event("PermissionRequest", "b", tool_name="Bash", tool_input={}))
+    hotkey.callback()  # from the hotkey thread: the signal brings it to the main thread
+    qtbot.waitUntil(lambda: focused == ["a"], timeout=1000)
+
+
+def test_the_shortcut_does_nothing_when_no_session_needs_you(qtbot, env):
+    hotkey = FakeHotkey()
+    app = hotkey_app(qtbot, env, hotkey)
+    focused = []
+    app.controller._focus = focused.append
+    app.handle_event(make_event("UserPromptSubmit", "a"))
+    app.jump_to_waiting()
+    assert focused == []
+
+
+def test_turned_off_it_never_listens(qtbot, env):
+    hotkey = FakeHotkey()
+    app = hotkey_app(qtbot, env, hotkey, jump_hotkey=False)
+    assert not app.hotkey_active and hotkey.registered == 0
+
+
+def test_switching_it_off_and_on_in_settings(qtbot, env):
+    hotkey = FakeHotkey()
+    app = hotkey_app(qtbot, env, hotkey)
+    window = app.open_settings()
+    window.jump_hotkey.setChecked(False)
+    assert not app.hotkey_active and hotkey.callback is None
+    assert window.jump_hint.text() == "Turned off."
+    window.jump_hotkey.setChecked(True)
+    assert app.hotkey_active and hotkey.callback is not None
+    assert "Works from any app" in window.jump_hint.text()
+    assert SettingsStore(env["settings"]).load().jump_hotkey is True
+    window.close()
+
+
+def test_a_key_owned_by_another_app_is_explained(qtbot, env):
+    hotkey = FakeHotkey(free=False)
+    app = hotkey_app(qtbot, env, hotkey)
+    assert not app.hotkey_active
+    window = app.open_settings()
+    assert "Another app is using Ctrl+Alt+Space" in window.jump_hint.text()
+    window.close()
+
+
+def test_settings_lists_the_shortcuts(qtbot, env):
+    app = build_with(qtbot, env, fallback_platform())
+    window = app.open_settings()
+    names = [caps.accessibleName() for caps in window.key_caps]
+    assert names == ["Ctrl plus Alt plus Space", "Tab", "Space", "← plus →"]
+    window.close()
+
+
 def test_start_when_not_connected_opens_settings(qtbot, env):
     app, _, _ = build(qtbot, env)
     app.start()

@@ -22,11 +22,19 @@ import time
 from dataclasses import dataclass, field
 
 from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QCursor, QMouseEvent, QPainter, QPen
+from PySide6.QtGui import (
+    QAccessible,
+    QAccessibleEvent,
+    QColor,
+    QCursor,
+    QMouseEvent,
+    QPainter,
+    QPen,
+)
 from PySide6.QtWidgets import QWidget
 
 from taskpill.ui import geometry as g
-from taskpill.ui import motion
+from taskpill.ui import motion, spoken
 from taskpill.ui.pill_painter import Fonts, PillLook, paint_pill
 from taskpill.ui.popups import HoverCard, ResizeChip
 from taskpill.ui.theme import Palette, qcolor, system_palette
@@ -92,6 +100,8 @@ class PillRow(QWidget):
         self._window_w = 0  # the width we last gave the window (0 = not placed yet)
         self._room: float | None = None
         self._last_models: list[PillModel] = []
+        self._spoken_key: frozenset = frozenset()  # what a screen reader was last told
+        self._spoken_waiting: set[str] = set()
         self._sessions = 0  # sessions running, shown or not (decides circles vs pills)
         self._hovered: str | None = None
         self._press: QPoint | None = None
@@ -161,6 +171,25 @@ class PillRow(QWidget):
         self._update_chip()
         self.update()
 
+    def _update_accessibility(self, models: list[PillModel]) -> None:
+        """Give screen readers the words for what is painted, and speak up on real news
+        (a session started waiting for you, finished, ran out of usage), not on % ticks."""
+        # Windows reads the *name*, so the words go there; the description repeats them
+        # for readers that look at it. (Checked with UI Automation, 2026-11-18.)
+        words = spoken.describe(models)
+        self.setAccessibleName(f"{spoken.NAME}: {words}" if words else spoken.NAME)
+        self.setAccessibleDescription(words)
+        key = spoken.announcement_key(models)
+        if key == self._spoken_key:
+            return
+        newly_waiting = spoken.needs_you_ids(models) - self._spoken_waiting
+        self._spoken_key = key
+        self._spoken_waiting = spoken.needs_you_ids(models)
+        if QAccessible.isActive():
+            events = QAccessible.Event
+            kind = events.Alert if newly_waiting else events.DescriptionChanged
+            QAccessible.updateAccessibility(QAccessibleEvent(self, kind))
+
     def set_options(self, options: RowOptions) -> None:
         self._options = options
         self._retarget()
@@ -181,6 +210,7 @@ class PillRow(QWidget):
                 item.opacity.set(0.0, now, instant=instant)
 
         self._last_models = list(models)
+        self._update_accessibility(models)
         for m in models:
             item = self._items.get(m.session_id)
             target_w = self._target_width(m, models)

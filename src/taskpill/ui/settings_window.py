@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from taskpill.adapters.settings_store import Settings
+from taskpill.platform.base import JUMP_KEYS
 from taskpill.ui.shell_style import shell_stylesheet
 from taskpill.ui.theme import (
     ACCENT_COLORS,
@@ -25,7 +26,7 @@ from taskpill.ui.theme import (
     Palette,
     qcolor,
 )
-from taskpill.ui.widgets import Segmented, Swatches, Toggle
+from taskpill.ui.widgets import KeyCaps, Segmented, Swatches, Toggle
 
 COLUMN_WIDTH = 332  # the old single column's width
 COLUMN_GAP = 40
@@ -106,17 +107,25 @@ class SettingsWindow(QWidget):
                                                 "limited_color")
 
         root.addSpacing(14)
-        root.addWidget(_label("Motion", "section"))
-        self.reduced = self._toggle_row(root, "Reduce motion", settings.reduced_motion,
-                                        "reduced_motion",
-                                        hint="No glow pulse, no sliding. Changes are instant.")
-
-        root.addSpacing(14)
         root.addWidget(_label("Sounds", "section"))
         self.sound_needs_you = self._toggle_row(root, "When a session needs you",
                                                 settings.sound_needs_you, "sound_needs_you")
         self.sound_done = self._toggle_row(root, "When a session is done", settings.sound_done,
                                            "sound_done")
+
+        root.addSpacing(14)
+        root.addWidget(_label("Shortcuts", "section"))
+        self.jump_hotkey = self._toggle_row(root, "Turn on the jump shortcut", settings.jump_hotkey,
+                                            "jump_hotkey")
+        self.jump_hint = _label("", "hint")
+        root.addWidget(self.jump_hint)
+        self.key_caps = [
+            self._key_row(root, "Go to the waiting session", JUMP_KEYS),
+            self._key_row(root, "Move between settings", ("Tab",)),
+            self._key_row(root, "Switch on or off", ("Space",)),
+            self._key_row(root, "Change a choice", ("←", "→")),
+        ]
+        self.set_hotkey_status(False)
         root.addStretch(1)
         root = right
         root.addWidget(_label("Behavior", "section"))
@@ -137,6 +146,14 @@ class SettingsWindow(QWidget):
         self.quit_button.setFixedWidth(RESET_BUTTON_WIDTH)
         self.quit_button.clicked.connect(self.quit_requested)
         self._row(root, "Close TaskPill now.", self.quit_button, role="hint")
+
+        root.addSpacing(14)
+        root.addWidget(_label("Motion", "section"))
+        self.reduced = self._toggle_row(root, "Reduce motion", settings.reduced_motion,
+                                        "reduced_motion")
+        self.motion_hint = _label("", "hint")
+        root.addWidget(self.motion_hint)
+        self.set_system_motion(False)
 
         root.addSpacing(14)
         root.addWidget(_label("Claude Code", "section"))
@@ -202,6 +219,24 @@ class SettingsWindow(QWidget):
         self.connect_button.style().unpolish(self.connect_button)
         self.connect_button.style().polish(self.connect_button)
 
+    def set_system_motion(self, windows_reduces: bool) -> None:
+        """Windows' own "animation effects" switch also turns motion off; say so."""
+        text = "No glow pulse, no sliding. Changes are instant."
+        if windows_reduces:
+            text += " Windows is set to reduce motion, so TaskPill already does."
+        self.motion_hint.setText(text)
+
+    def set_hotkey_status(self, active: bool) -> None:
+        """Say whether the jump shortcut is really listening (another app may own the key)."""
+        keys = "+".join(JUMP_KEYS)
+        if not self._settings.jump_hotkey:
+            text = "Turned off."
+        elif active:
+            text = "Works from any app. The session waiting longest comes first."
+        else:
+            text = f"Another app is using {keys}, so this shortcut can't start."
+        self.jump_hint.setText(text)
+
     def set_update_status(self, text: str, action: str | None,
                           button: str = "") -> None:
         """``action``: "check", "install", "open" or None (no button)."""
@@ -224,7 +259,7 @@ class SettingsWindow(QWidget):
         self.setStyleSheet(shell_stylesheet(pal))
         for w in (self.glow, self.expand, self.dot, self.reduced, self.fullscreen,
                   self.fullscreen_needs_you, self.sound_needs_you, self.sound_done,
-                  self.check_updates,
+                  self.jump_hotkey, *self.key_caps, self.check_updates,
                   self.swatches, self.needs_you_swatches, self.done_swatches,
                   self.limited_swatches, self.auto_quit):
             w.set_palette(pal)
@@ -256,6 +291,11 @@ class SettingsWindow(QWidget):
         if hint:
             root.addWidget(_label(hint, "hint"))
 
+    def _key_row(self, root: QVBoxLayout, text: str, keys: tuple[str, ...]) -> KeyCaps:
+        caps = KeyCaps(self._pal, keys)
+        self._row(root, text, caps)
+        return caps
+
     def _color_row(self, root: QVBoxLayout, text: str,
                    colors: dict[str, tuple[str, str]], field: str) -> Swatches:
         swatches = Swatches(self._pal, getattr(self._settings, field), colors=colors)
@@ -274,7 +314,7 @@ class SettingsWindow(QWidget):
 
     def _update(self, **changes) -> None:
         self._settings = replace(self._settings, **changes)
-        self.settings_changed.emit(self._settings)
+        self.settings_changed.emit(self._settings)  # the app answers with set_hotkey_status
 
     def _on_connect_clicked(self) -> None:
         if self._connected:

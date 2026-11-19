@@ -13,20 +13,26 @@ Facts found on Windows 11 (build 26300, 2026-11-17):
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
+import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from ctypes import wintypes
 
 from taskpill.platform.base import (
     Edge,
+    HighContrastColors,
     Platform,
     Rect,
     ScreenInfo,
     Spot,
+    SystemPrefs,
     TaskbarInfo,
     WindowInfo,
+    WindowMemory,
     choose_window,
+    colorref_to_hex,
     looks_fullscreen,
     spot_from_taskbar,
 )
@@ -258,9 +264,27 @@ def bring_to_front(window: WindowInfo) -> bool:
     return bool(user32.SetForegroundWindow(hwnd))
 
 
+def foreground_window() -> WindowInfo | None:
+    """The window in front right now (None if there is none)."""
+    hwnd = user32.GetForegroundWindow()
+    if not hwnd:
+        return None
+    length = user32.GetWindowTextLengthW(hwnd)
+    title = ctypes.create_unicode_buffer(length + 1)
+    user32.GetWindowTextW(hwnd, title, length + 1)
+    cls = ctypes.create_unicode_buffer(256)
+    user32.GetClassNameW(hwnd, cls, 256)
+    pid = wintypes.DWORD()
+    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    return WindowInfo(int(hwnd), int(pid.value), title.value, cls.value)
+
+
 class WindowsFocuser:
+    def __init__(self, memory: WindowMemory | None = None) -> None:
+        self._memory = memory or WindowMemory()
+
     def focus(self, pid_chain: Sequence[int], project: str) -> bool:
-        window = choose_window(list_windows(), pid_chain, project)
+        window = choose_window(list_windows(), pid_chain, project, self._memory.recall(pid_chain))
         return bring_to_front(window) if window is not None else False
 
 
@@ -304,15 +328,117 @@ class WindowsFullscreen:
 
 
 class WindowsActiveWindow:
+    def __init__(self, memory: WindowMemory | None = None) -> None:
+        self._memory = memory or WindowMemory()
+
+    def note_prompt(self, pid_chain: Sequence[int]) -> None:
+        self._memory.remember(pid_chain, foreground_window())
+
     def foreground(self) -> int | None:
         hwnd = user32.GetForegroundWindow()
         return int(hwnd) if hwnd else None
 
     def window_for(self, pid_chain: Sequence[int], project: str) -> int | None:
-        window = choose_window(list_windows(), pid_chain, project)
+        window = choose_window(list_windows(), pid_chain, project, self._memory.recall(pid_chain))
         return window.handle if window is not None else None
 
 
+# ---- the global shortcut (Ctrl+Alt+Space) --------------------------------------------------
+WM_HOTKEY, WM_QUIT = 0x0312, 0x0012
+MOD_ALT, MOD_CONTROL, MOD_NOREPEAT = 0x1, 0x2, 0x4000
+VK_SPACE = 0x20
+HOTKEY_ID = 0x7461  # ours alone; any number works
+
+
+class WindowsHotkey:
+    """RegisterHotKey on a small thread of its own, which waits for WM_HOTKEY messages.
+
+    Registering never takes the key from another app: if one already owns it,
+    Windows refuses and ``register`` returns False.
+    """
+
+    def __init__(self) -> None:
+        self._thread: threading.Thread | None = None
+        self._thread_id = 0
+
+    def register(self, on_press: Callable[[], None]) -> bool:
+        self.unregister()
+        ready = threading.Event()
+        result = {"ok": False}
+
+        def run() -> None:
+            ok = bool(user32.RegisterHotKey(None, HOTKEY_ID, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT,
+                                            VK_SPACE))
+            result["ok"] = ok
+            self._thread_id = kernel32.GetCurrentThreadId()
+            ready.set()
+            if not ok:
+                return
+            msg = wintypes.MSG()
+            while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+                if msg.message == WM_HOTKEY and msg.wParam == HOTKEY_ID:
+                    with contextlib.suppress(Exception):  # a bad callback must not end the listener
+                        on_press()
+            user32.UnregisterHotKey(None, HOTKEY_ID)
+
+        self._thread = threading.Thread(target=run, name="taskpill-hotkey", daemon=True)
+        self._thread.start()
+        ready.wait(2.0)
+        if not result["ok"]:
+            self._thread = None
+        return result["ok"]
+
+    def unregister(self) -> None:
+        thread, self._thread = self._thread, None
+        if thread is not None and thread.is_alive():
+            user32.PostThreadMessageW(self._thread_id, WM_QUIT, 0, 0)
+            thread.join(1.0)
+
+
+# ---- accessibility choices ------------------------------------------------------------------
+SPI_GETHIGHCONTRAST, SPI_GETCLIENTAREAANIMATION = 0x0042, 0x1042
+HCF_HIGHCONTRASTON = 0x1
+COLOR_WINDOW, COLOR_WINDOWTEXT, COLOR_GRAYTEXT, COLOR_HIGHLIGHT, COLOR_HOTLIGHT = 5, 8, 17, 13, 26
+
+
+class _HighContrast(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.UINT), ("dwFlags", wintypes.DWORD),
+                ("lpszDefaultScheme", wintypes.LPWSTR)]
+
+
+class WindowsSystemPrefs:
+    def read(self) -> SystemPrefs:
+        return SystemPrefs(self._reduce_motion(), self._high_contrast())
+
+    @staticmethod
+    def _reduce_motion() -> bool:
+        animations = wintypes.BOOL(True)
+        if not user32.SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0,
+                                            ctypes.byref(animations), 0):
+            return False  # unknown: assume animations are fine
+        return not animations.value
+
+    @staticmethod
+    def _high_contrast() -> HighContrastColors | None:
+        info = _HighContrast(cbSize=ctypes.sizeof(_HighContrast))
+        if not user32.SystemParametersInfoW(SPI_GETHIGHCONTRAST, info.cbSize,
+                                            ctypes.byref(info), 0):
+            return None
+        if not info.dwFlags & HCF_HIGHCONTRASTON:
+            return None
+
+        def color(index: int) -> str:
+            return colorref_to_hex(user32.GetSysColor(index))
+
+        return HighContrastColors(
+            window=color(COLOR_WINDOW), text=color(COLOR_WINDOWTEXT),
+            hotlight=color(COLOR_HOTLIGHT), highlight=color(COLOR_HIGHLIGHT),
+            gray=color(COLOR_GRAYTEXT),
+        )
+
+
 def create_windows_platform() -> Platform:
-    return Platform(WindowsPlacement(), WindowsFocuser(), WindowsFullscreen(), WindowsTopmost(),
-                    "windows", WindowsActiveWindow())
+    memory = WindowMemory()  # shared: what a prompt taught us is used by click and Done-on-switch
+    return Platform(WindowsPlacement(), WindowsFocuser(memory), WindowsFullscreen(),
+                    WindowsTopmost(), "windows", WindowsActiveWindow(memory), WindowsHotkey(),
+                    WindowsSystemPrefs())

@@ -8,6 +8,7 @@ from dataclasses import dataclass, replace
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QGuiApplication
 
+from taskpill.platform.base import HighContrastColors
 from taskpill.ui.view_model import PillKind
 
 
@@ -110,6 +111,25 @@ def palette_for(dark: bool, accent: str = "violet", needs_you: str = "amber",
         needs_you=pick(NEEDS_YOU_COLORS, needs_you, base.needs_you),
         done=pick(DONE_COLORS, done, base.done),
         limited=pick(LIMITED_COLORS, limited, base.limited),
+    )
+
+
+def high_contrast_palette(colors: HighContrastColors) -> Palette:
+    """The pill in the user's own Windows high-contrast theme. Every text and line is the
+    theme's text color (never the gray, which means "disabled"), and the states keep
+    their other cues: the dot, the check, the pause mark."""
+    surface = colors.window
+    needs = colors.highlight if colors.highlight.upper() != surface.upper() else colors.hotlight
+    return Palette(
+        surface=surface,
+        hairline=colors.text,
+        text=colors.text,
+        text_soft=colors.text,
+        working=colors.hotlight,
+        needs_you=needs,
+        done=colors.text,
+        dark=qcolor(surface).lightness() < 128,
+        limited=colors.gray,
     )
 
 
