@@ -194,7 +194,7 @@ class FakeWindow:
 def test_the_pill_window_goes_above_the_menu_bar_on_every_space(monkeypatch):
     win = FakeWindow()
     monkeypatch.setattr(macos, "ns_window", lambda _id: win)
-    macos.MacTopmost().keep_on_top(1234)
+    macos.MacTopmost(is_cocoa=lambda: True).keep_on_top(1234)
     assert win.level() == macos.PILL_LEVEL
     assert win.collectionBehavior() & macos.CAN_JOIN_ALL_SPACES
     assert win.collectionBehavior() & macos.FULL_SCREEN_AUXILIARY
@@ -204,7 +204,7 @@ def test_the_pill_window_goes_above_the_menu_bar_on_every_space(monkeypatch):
 def test_keeping_on_top_is_cheap_once_set(monkeypatch):
     win = FakeWindow()
     monkeypatch.setattr(macos, "ns_window", lambda _id: win)
-    keeper = macos.MacTopmost()
+    keeper = macos.MacTopmost(is_cocoa=lambda: True)
     keeper.keep_on_top(1)
     before = win.calls
     keeper.keep_on_top(1)
@@ -236,3 +236,18 @@ def test_create_makes_an_agent_app_with_mac_placement(fake_mac):
 def test_create_survives_a_missing_appkit(monkeypatch):
     monkeypatch.setitem(sys.modules, "AppKit", None)  # import fails
     assert macos.create_macos_platform().name == "macos"
+
+
+def test_never_touches_a_native_window_off_the_real_mac_display(monkeypatch):
+    # Found on GitHub's Mac (2026-11-22): under Qt's offscreen display a winId isn't
+    # an NSView, and treating it as one crashed Python. Now it isn't even looked at.
+    def crash(_id):
+        raise AssertionError("ns_window must not be called")
+
+    monkeypatch.setattr(macos, "ns_window", crash)
+    macos.MacTopmost(is_cocoa=lambda: False).keep_on_top(1234)
+    macos.MacTopmost(is_cocoa=lambda: True).keep_on_top(0)  # no window yet
+
+
+def test_the_default_check_asks_qt(qapp):
+    assert macos.qt_is_cocoa() is False  # the test suite runs on Qt's offscreen display

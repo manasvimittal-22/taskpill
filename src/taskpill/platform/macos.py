@@ -143,15 +143,30 @@ class MacPlacement:
 
 # ---- the pill's window: above the menu bar, on every Space ------------------------------------
 def ns_window(window_id: int):
-    """The NSWindow behind a Qt window. Qt's winId() on a Mac is its NSView."""
+    """The NSWindow behind a Qt window. Qt's winId() on a Mac is its NSView, but only
+    on Qt's real Mac display ("cocoa"): anywhere else it's just a number, and treating
+    it as a pointer crashes the process. Callers check ``qt_is_cocoa`` first."""
     import objc
 
     view = objc.objc_object(c_void_p=ctypes.c_void_p(window_id))
     return view.window()
 
 
+def qt_is_cocoa() -> bool:
+    from PySide6.QtGui import QGuiApplication
+
+    return QGuiApplication.platformName() == "cocoa"
+
+
 class MacTopmost:
+    def __init__(self, is_cocoa: Callable[[], bool] = qt_is_cocoa) -> None:
+        self._is_cocoa = is_cocoa
+
     def keep_on_top(self, window_id: int) -> None:
+        # Found on GitHub's Mac, 2026-11-22: under Qt's offscreen test display a
+        # winId isn't an NSView, and ns_window() crashed Python (segfault).
+        if not window_id or not self._is_cocoa():
+            return
         window = ns_window(window_id)
         if window is None:
             return
