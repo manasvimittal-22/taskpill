@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from taskpill.adapters.settings_store import Settings
 from taskpill.platform.base import JUMP_KEYS
+from taskpill.ui.os_words import WORDS
 from taskpill.ui.shell_style import shell_stylesheet
 from taskpill.ui.theme import (
     ACCENT_COLORS,
@@ -191,7 +192,7 @@ class SettingsWindow(QWidget):
         root.addWidget(_label("Position and size", "section"))
         reset = QPushButton("Reset position")
         reset.clicked.connect(self.reset_position_requested)
-        self._row(root, "Back next to the ^ arrow.", reset, role="hint")
+        self._row(root, f"Back next to {WORDS.home}.", reset, role="hint")
         # Reset size lives here (Manasvi, 2026-11-17), not in the pill's menu.
         self.reset_size_button = QPushButton("Reset size")
         self.reset_size_button.clicked.connect(self.reset_size_requested)
@@ -220,10 +221,10 @@ class SettingsWindow(QWidget):
         self.connect_button.style().polish(self.connect_button)
 
     def set_system_motion(self, windows_reduces: bool) -> None:
-        """Windows' own "animation effects" switch also turns motion off; say so."""
+        """The system's own reduce-motion switch also turns motion off; say so."""
         text = "No glow pulse, no sliding. Changes are instant."
         if windows_reduces:
-            text += " Windows is set to reduce motion, so TaskPill already does."
+            text += f" {WORDS.system} is set to reduce motion, so TaskPill already does."
         self.motion_hint.setText(text)
 
     def set_hotkey_status(self, active: bool) -> None:

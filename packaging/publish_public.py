@@ -36,6 +36,7 @@ INCLUDE = [
     "packaging/make_icon.py", "packaging/make_sounds.py", "packaging/make_readme_images.py",
     "packaging/make_portable.py", "packaging/entry_app.py", "packaging/taskpill.spec",
     "packaging/installer.iss", "packaging/build_windows.ps1", "packaging/portable.txt",
+    "packaging/taskpill_mac.spec", "packaging/build_macos.sh",
     "packaging/taskpill.ico", "packaging/taskpill.png", "packaging/publish_public.py",
 ]
 # Never published, even if inside an included folder.

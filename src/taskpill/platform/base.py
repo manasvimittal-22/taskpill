@@ -1,7 +1,7 @@
 """What the app needs from the OS, as small interfaces, plus the pure decisions.
 
 Everything here is plain Python so it can be tested on any OS. The Win32
-calls live in windows.py; macOS comes in Phase 5.
+calls live in windows.py, the macOS ones in macos.py.
 
 Coordinates: ``Rect`` is in *physical* screen pixels (what Win32 and UI
 Automation report). ``Spot`` is in Qt's *logical* pixels. ``to_logical``
@@ -11,17 +11,31 @@ converts using the screen the point is on.
 from __future__ import annotations
 
 import re
+import sys
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Protocol
 
-from taskpill.ui.geometry import Anchor
+from taskpill.ui.geometry import MAX_HEIGHT, Anchor
+
 
 # The shortcut that jumps to the session that needs you (Manasvi, 2026-11-18). Shown in Settings.
-JUMP_KEYS = ("Ctrl", "Alt", "Space")
+def jump_keys_for(platform: str) -> tuple[str, ...]:
+    """The same three keys, named the way each OS names them."""
+    return ("Control", "Option", "Space") if platform == "darwin" else ("Ctrl", "Alt", "Space")
+
+
+JUMP_KEYS = jump_keys_for(sys.platform)
 GAP_TO_ARROW = 6  # physical px between the row and the "^" arrow
 FALLBACK_TRAY_WIDTH = 340  # if no tray is found: this far in from the taskbar's right end
+# macOS (Manasvi, 2026-11-22): in the menu bar, just right of the notch, sized to fit there.
+NOTCH_GAP = 8.0  # pt between the notch and the row, and between the row and the first icon
+NOTCHLESS_HALF = 92.0  # no notch: pretend one this far right of centre (half a 14" notch)
+# Menu bar left above and below the pill: 8% of the bar, at least 2 pt (a 37 pt bar
+# holds a 31 pt pill, a 24 pt bar a 20 pt one). Less looked cramped next to the notch.
+BAR_INSET_SHARE, BAR_INSET_MIN = 0.08, 2.0
+PLAIN_BAR_HEIGHT = 24.0  # a menu bar on a screen with no notch
 
 
 # ---- data -------------------------------------------------------------------------------
@@ -72,6 +86,17 @@ class Spot:
     x: float  # the row's right edge (RIGHT anchor) or center (CENTER anchor)
     y: float  # vertical center of the row
     room: float | None = None  # free width before something else (app icons), if known
+    max_height: float | None = None  # macOS: the pill must fit in the menu bar
+
+
+@dataclass(frozen=True)
+class MenuBarInfo:
+    """The macOS menu bar of the main screen, in Qt's coordinates (points, y down)."""
+
+    screen: Rect  # the whole screen
+    bar_height: float  # the menu bar's height (37 pt on a notched MacBook, 24 pt otherwise)
+    notch_right: float | None = None  # x where the notch ends; None = no notch
+    icons: tuple[Rect, ...] = ()  # the menu-bar icons (Wi-Fi, battery, clock, other apps)
 
 
 @dataclass(frozen=True)
@@ -89,6 +114,7 @@ class WindowInfo:
     title: str
     class_name: str = ""
     minimized: bool = False
+    rect: Rect | None = None  # macOS fills it in (Quartz gives bounds with the list)
 
 
 @dataclass(frozen=True)
@@ -106,6 +132,16 @@ class HighContrastColors:
 class SystemPrefs:
     reduce_motion: bool = False  # Windows: Settings → Accessibility → Visual effects → Animation
     high_contrast: HighContrastColors | None = None  # set while a high-contrast theme is on
+
+
+def increase_contrast_colors(dark: bool) -> HighContrastColors:
+    """macOS has no high-contrast *theme*, only "Increase contrast". Use Apple's
+    accessible (high-contrast) system blue and orange on pure black or white."""
+    if dark:
+        return HighContrastColors(window="#000000", text="#FFFFFF", hotlight="#409CFF",
+                                  highlight="#FFB340", gray="#AEAEB2")
+    return HighContrastColors(window="#FFFFFF", text="#000000", hotlight="#0040DD",
+                              highlight="#C93400", gray="#6C6C70")
 
 
 def colorref_to_hex(colorref: int) -> str:
@@ -211,6 +247,51 @@ def spot_from_taskbar(info: TaskbarInfo, screens: Sequence[ScreenInfo]) -> Spot 
     return Spot(lx, ly, room)
 
 
+def spot_beside_notch(info: MenuBarInfo) -> Spot:
+    """macOS: in the menu bar, just right of the notch, fitted to the bar.
+
+    Left edge of the row (LEFT anchor) 8 pt right of the notch; with no notch,
+    where a notch's right edge would be. Vertically centred on the bar. ``room``
+    reaches to the first menu-bar icon on the right. If not even a circle fits
+    there (a crowded menu bar), the row drops just under the menu bar instead.
+    """
+    s = info.screen
+    edge = info.notch_right if info.notch_right is not None else (
+        (s.left + s.right) / 2 + NOTCHLESS_HALF)
+    left = edge + NOTCH_GAP
+    max_height = round(info.bar_height - 2 * bar_inset(info.bar_height))
+    in_the_way = [r.left for r in info.icons if r.right > left]
+    room = min(in_the_way, default=s.right) - NOTCH_GAP - left
+    if room < max_height:
+        under = s.top + info.bar_height + NOTCH_GAP + MAX_HEIGHT / 2
+        return Spot(left, under, None, None)
+    return Spot(left, s.top + info.bar_height / 2, room, max_height)
+
+
+def bar_inset(bar_height: float) -> float:
+    return max(BAR_INSET_MIN, bar_height * BAR_INSET_SHARE)
+
+
+def screen_containing(rect: Rect, screens: Sequence[Rect]) -> Rect | None:
+    """The screen holding the middle of ``rect`` (None if it's off every screen)."""
+    cx, cy = (rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2
+    return next((s for s in screens if s.contains(cx, cy)), None)
+
+
+def guess_menu_bar(screens: Sequence[ScreenInfo]) -> MenuBarInfo | None:
+    """If macOS can't be asked: the first screen, a plain 24 pt menu bar, no notch."""
+    if not screens:
+        return None
+    return MenuBarInfo(screens[0].logical, PLAIN_BAR_HEIGHT)
+
+
+def cocoa_to_qt(x: float, y: float, w: float, h: float, primary_height: float) -> Rect:
+    """A Cocoa rect (origin at the bottom left of the main screen, y up) as a Qt one
+    (origin at its top left, y down). Both are in points."""
+    top = primary_height - (y + h)
+    return Rect(round(x), round(top), round(x + w), round(top + h))
+
+
 def corner_spot(screens: Sequence[ScreenInfo], margin: float = 12.0) -> Spot | None:
     """Fallback: bottom-right corner of the primary (first) screen, in logical px."""
     if not screens:
@@ -260,6 +341,8 @@ def choose_window(
     pid_chain: Sequence[int],
     project: str,
     preferred: int | None = None,
+    *,
+    preferred_as_last_resort: bool = False,
 ) -> WindowInfo | None:
     """The window to bring forward for a session.
 
@@ -272,6 +355,11 @@ def choose_window(
     several (VS Code / Windows Terminal with many windows), prefer the best title
     match for the project folder, else the topmost one (``windows`` is in z-order,
     top first). Desktop, taskbar and File Explorer windows never count.
+
+    ``preferred_as_last_resort`` (macOS): when no process in the chain owns a
+    window, use ``preferred`` even though it isn't in the chain. iTerm2 and tmux
+    run the shell under a server process that isn't a child of the app, so the
+    chain never reaches a window; the window in front at the prompt is the answer.
     """
     candidates = [w for w in windows if w.class_name not in NEVER_FOCUS_CLASSES]
     chain = set(pid_chain)
@@ -289,6 +377,8 @@ def choose_window(
             if _title_match(best.title, needle) > 0:
                 return best
         return owned[0]
+    if preferred_as_last_resort and preferred is not None:
+        return next((w for w in candidates if w.handle == preferred), None)
     return None
 
 
@@ -300,15 +390,18 @@ class WindowMemory:
     Keyed by process chain (one chain = one running ``claude``). Bounded.
     """
 
-    def __init__(self, limit: int = 64) -> None:
+    def __init__(self, limit: int = 64, *, strict: bool = True) -> None:
         self._limit = limit
+        # strict (Windows): only a window of the session's own processes. macOS keeps
+        # any window, for chains that never reach the app (see choose_window).
+        self._strict = strict
         self._by_chain: dict[tuple[int, ...], int] = {}
 
     def remember(self, pid_chain: Sequence[int], front: WindowInfo | None) -> None:
-        """Keep ``front`` for this session, but only if it belongs to the session's chain."""
-        if front is None or front.class_name in NEVER_FOCUS_CLASSES:
+        """Keep ``front`` for this session (when strict, only if it belongs to the chain)."""
+        if front is None or front.class_name in NEVER_FOCUS_CLASSES or not pid_chain:
             return
-        if not pid_chain or front.pid not in pid_chain:
+        if self._strict and front.pid not in pid_chain:
             return
         key = tuple(pid_chain)
         self._by_chain.pop(key, None)  # re-insert so the oldest entry is the first

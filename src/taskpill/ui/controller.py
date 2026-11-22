@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable
 
 from PySide6.QtCore import QObject, QTimer
@@ -113,6 +114,8 @@ class PillController(QObject):
         if session is None:
             return
         if self._focus is not None:
-            self._focus(session)
+            # A platform that can't focus must not leave Done stuck.
+            with contextlib.suppress(Exception):
+                self._focus(session)
         if session.state in (SessionState.DONE, SessionState.LIMITED):
             self._store.acknowledge(session_id)

@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QApplication
 from taskpill.adapters.hooks_installer import HookCommand, HooksInstaller
 from taskpill.adapters.settings_store import Settings, SettingsStore
 from taskpill.app import TaskPillApp
-from taskpill.platform.base import fallback_platform
+from taskpill.platform.base import JUMP_KEYS, fallback_platform
 from taskpill.ui.icon import TrayState
 from tests.conftest import FakeClock, make_event
 
@@ -172,7 +172,7 @@ def test_a_key_owned_by_another_app_is_explained(qtbot, env):
     app = hotkey_app(qtbot, env, hotkey)
     assert not app.hotkey_active
     window = app.open_settings()
-    assert "Another app is using Ctrl+Alt+Space" in window.jump_hint.text()
+    assert f"Another app is using {'+'.join(JUMP_KEYS)}" in window.jump_hint.text()
     window.close()
 
 
@@ -180,7 +180,7 @@ def test_settings_lists_the_shortcuts(qtbot, env):
     app = build_with(qtbot, env, fallback_platform())
     window = app.open_settings()
     names = [caps.accessibleName() for caps in window.key_caps]
-    assert names == ["Ctrl plus Alt plus Space", "Tab", "Space", "← plus →"]
+    assert names == [" plus ".join(JUMP_KEYS), "Tab", "Space", "← plus →"]
     window.close()
 
 

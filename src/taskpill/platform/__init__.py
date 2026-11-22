@@ -12,6 +12,10 @@ def create_platform() -> Platform:
         from taskpill.platform.windows import create_windows_platform
 
         return create_windows_platform()
+    if sys.platform == "darwin":
+        from taskpill.platform.macos import create_macos_platform
+
+        return create_macos_platform()
     from taskpill.platform.base import fallback_platform
 
-    return fallback_platform()  # macOS arrives in Phase 5
+    return fallback_platform()

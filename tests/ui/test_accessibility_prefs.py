@@ -9,6 +9,7 @@ from taskpill.adapters.hooks_installer import HookCommand, HooksInstaller
 from taskpill.adapters.settings_store import Settings, SettingsStore
 from taskpill.app import TaskPillApp
 from taskpill.platform.base import HighContrastColors, SystemPrefs, fallback_platform
+from taskpill.ui.os_words import WORDS
 from taskpill.ui.theme import high_contrast_palette
 from tests.conftest import FakeClock
 
@@ -80,11 +81,11 @@ def test_a_change_in_windows_applies_live(qtbot, env):
     app = build(qtbot, env, probe)
     window = app.open_settings()
     assert app._row_options().reduced_motion is False
-    assert "Windows is set" not in window.motion_hint.text()
+    assert f"{WORDS.system} is set" not in window.motion_hint.text()
     probe.prefs = SystemPrefs(reduce_motion=True)
     app._check_system_prefs()
     assert app._row_options().reduced_motion is True
-    assert "Windows is set to reduce motion" in window.motion_hint.text()
+    assert f"{WORDS.system} is set to reduce motion" in window.motion_hint.text()
     probe.prefs = SystemPrefs()
     app._check_system_prefs()
     assert app._row_options().reduced_motion is False

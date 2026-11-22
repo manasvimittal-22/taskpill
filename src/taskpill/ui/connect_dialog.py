@@ -13,6 +13,7 @@ from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from taskpill.ui import geometry as g
+from taskpill.ui.os_words import WORDS
 from taskpill.ui.pill_painter import Fonts, PillLook, paint_pill
 from taskpill.ui.shell_style import shell_stylesheet
 from taskpill.ui.theme import Palette
@@ -64,7 +65,7 @@ class ConnectDialog(QDialog):
         body = QLabel(
             "TaskPill shows what each Claude Code session is doing. To hear about it, "
             "it adds a few hooks to your Claude Code settings (~/.claude/settings.json).\n\n"
-            "A backup is made first, and you can disconnect any time from the tray menu."
+            f"A backup is made first, and you can disconnect any time from {WORDS.menu}."
         )
         body.setProperty("role", "body")
         body.setWordWrap(True)

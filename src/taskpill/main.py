@@ -43,10 +43,15 @@ class EventBridge(QObject):
     clicked = Signal(str)
 
 
-def is_portable() -> bool:
-    """The portable .zip has a portable.txt next to TaskPill.exe."""
-    return bool(getattr(sys, "frozen", False)) and (
-        Path(sys.executable).parent / "portable.txt").exists()
+def is_portable(platform: str | None = None) -> bool:
+    """Updates open the download page instead of running an installer: the portable
+    .zip (a portable.txt next to TaskPill.exe), and every Mac copy (a .app is
+    replaced by dragging the new one into Applications)."""
+    if not getattr(sys, "frozen", False):
+        return False
+    if (platform or sys.platform) == "darwin":
+        return True
+    return (Path(sys.executable).parent / "portable.txt").exists()
 
 
 def make_update_service() -> UpdateService | None:

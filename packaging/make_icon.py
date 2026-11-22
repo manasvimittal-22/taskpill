@@ -1,6 +1,7 @@
 """Draw TaskPill's app icon and write it as a multi-size .ico (and a 512 px PNG).
 
     python packaging/make_icon.py packaging/taskpill.ico
+    python packaging/make_icon.py build/taskpill.iconset   (macOS: then `iconutil -c icns`)
 
 Big sizes: a slate rounded square holding a capsule whose violet edge runs
 70% of the way round (the pill's "edge is the progress" idea). Small sizes
@@ -82,9 +83,26 @@ def write_ico(path: Path, images: list[tuple[int, bytes]]) -> None:
     path.write_bytes(header + entries + blobs)
 
 
+# The PNGs a macOS .iconset folder needs: icon_<n>x<n>.png and the @2x versions.
+ICONSET = [(16, "16x16"), (32, "16x16@2x"), (32, "32x32"), (64, "32x32@2x"),
+           (128, "128x128"), (256, "128x128@2x"), (256, "256x256"), (512, "256x256@2x"),
+           (512, "512x512"), (1024, "512x512@2x")]
+
+
+def write_iconset(folder: Path) -> None:
+    folder.mkdir(parents=True, exist_ok=True)
+    for size, name in ICONSET:
+        draw(size).save(str(folder / f"icon_{name}.png"))
+
+
 def main(argv: list[str]) -> int:
     out = Path(argv[1] if len(argv) > 1 else "packaging/taskpill.ico")
     app = QGuiApplication.instance() or QGuiApplication(argv[:1])
+    if out.suffix == ".iconset":
+        write_iconset(out)
+        del app
+        print(f"wrote {out} ({len(ICONSET)} PNGs)")
+        return 0
     write_ico(out, [(s, png_bytes(draw(s))) for s in SIZES])
     draw(512).save(str(out.with_suffix(".png")))
     del app

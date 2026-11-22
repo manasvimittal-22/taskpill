@@ -40,6 +40,7 @@ from taskpill.ui.view_model import PillKind, PillModel
 
 EDGE_WIDTH = 2.25
 PAD_X = 14.0  # at scale 1
+TEXT_SCALE_FLOOR = g.MIN_HEIGHT / g.HEIGHT  # text at the smallest settable size (9.75 px)
 GAP_X = 10.0  # between the name and the step, and before the %
 TAIL_ALPHA = 0.32  # how faint the progress line is where it started
 SIGN_SCALE = 0.78  # the % sign is smaller than the number, so the number leads
@@ -63,14 +64,17 @@ class Fonts:
     """Fonts for one text scale. Use ``Fonts.for_height`` to share them."""
 
     def __init__(self, scale: float = 1.0) -> None:
-        size = 12 * scale
+        # Padding follows ``scale``; text never gets smaller than at the smallest size
+        # the user can set, so a pill fitted to a short macOS menu bar stays readable.
+        text = max(scale, TEXT_SCALE_FLOOR)
+        size = 12 * text
         self.scale = scale
         self.title = ui_font(size, QFont.Weight.DemiBold)
         self.detail = ui_font(size)
         self.percent = tabular(ui_font(size, QFont.Weight.DemiBold))
         self.sign = ui_font(size * SIGN_SCALE, QFont.Weight.DemiBold)
-        self.circle = tabular(ui_font(11 * scale, QFont.Weight.DemiBold))
-        self.ask = ui_font(14 * scale, QFont.Weight.Bold)  # the "?" of a needs-you circle
+        self.circle = tabular(ui_font(11 * text, QFont.Weight.DemiBold))
+        self.ask = ui_font(14 * text, QFont.Weight.Bold)  # the "?" of a needs-you circle
 
     @staticmethod
     def for_height(height: float) -> Fonts:

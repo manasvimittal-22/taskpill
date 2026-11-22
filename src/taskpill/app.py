@@ -33,6 +33,7 @@ from taskpill.ui.connect_dialog import ConnectDialog
 from taskpill.ui.controller import PillController
 from taskpill.ui.geometry import Dims
 from taskpill.ui.icon import TrayState
+from taskpill.ui.os_words import WORDS
 from taskpill.ui.pill_row import PillRow, RowOptions
 from taskpill.ui.platform_driver import PlatformDriver
 from taskpill.ui.popups import PillMenu
@@ -429,7 +430,7 @@ class TaskPillApp(QObject):
         announce = self.updates.take_announcement() if self.updates else None
         if announce is not None:
             self.tray.inform(f"TaskPill {announce.version} is available",
-                             "Right-click the TaskPill tray icon to update.")
+                             f"Right-click {WORDS.icon} to update.")
         self._show_update_status()
 
     def _show_update_status(self) -> None:

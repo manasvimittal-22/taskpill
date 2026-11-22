@@ -1,12 +1,14 @@
 """Playing TaskPill's two sounds (made by packaging/make_sounds.py).
 
 Windows plays them with the built-in ``winsound`` (no extra libraries, nothing
-added to the installer). Other systems are silent for now (macOS comes with
-Phase 5). Playing never blocks and never raises: a sound is a nicety.
+added to the installer). macOS plays them with ``afplay``, which every Mac has.
+Other systems are silent. Playing never blocks and never raises: a sound is a nicety.
 """
 
 from __future__ import annotations
 
+import contextlib
+import subprocess
 import sys
 from pathlib import Path
 from typing import Protocol
@@ -44,5 +46,26 @@ class WinSoundPlayer:
             pass  # no sound device, or the system refused: stay quiet
 
 
-def default_player() -> SoundPlayer:
-    return WinSoundPlayer() if sys.platform == "win32" else SilentPlayer()
+class AfplayPlayer:
+    """macOS: ``afplay <file>`` in the background. Nothing waits for it."""
+
+    def __init__(self, folder: Path = SOUND_DIR, popen=subprocess.Popen) -> None:
+        self._folder = folder
+        self._popen = popen
+
+    def play(self, name: str) -> None:
+        path = self._folder / f"{name}.wav"
+        if not path.is_file():
+            return
+        with contextlib.suppress(OSError):  # no afplay (not a Mac after all): stay quiet
+            self._popen(["afplay", str(path)], stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def default_player(platform: str | None = None) -> SoundPlayer:
+    platform = platform or sys.platform
+    if platform == "win32":
+        return WinSoundPlayer()
+    if platform == "darwin":
+        return AfplayPlayer()
+    return SilentPlayer()

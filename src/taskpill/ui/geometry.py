@@ -20,6 +20,9 @@ MIN_WIDTH, MAX_WIDTH = 180.0, 400.0  # resize limits (settings_store has the sam
 # ... or a circle: dragging narrower than halfway between the circle and MIN_WIDTH
 # snaps the pill to a circle (Manasvi, 2026-11-17).
 MIN_HEIGHT, MAX_HEIGHT = 26.0, 44.0
+# In the macOS menu bar the pill is fitted to the bar, which can be shorter than
+# MIN_HEIGHT (a 24 pt bar holds a 20 pt pill). Never thinner than this.
+BAR_MIN_HEIGHT = 16.0
 WIDE_EXTRA = WIDE_WIDTH - FULL_WIDTH  # a needs-you pill is this much wider than a full one
 
 
@@ -36,9 +39,10 @@ class Dims:
 
     width: float = FULL_WIDTH
     height: float = HEIGHT
+    min_height: float = MIN_HEIGHT  # lower only when fitted to the macOS menu bar
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "height", clamp_height(self.height))
+        object.__setattr__(self, "height", clamp_height(self.height, self.min_height))
         object.__setattr__(self, "width", clamp_width(self.width, self.height))
 
     @property
@@ -78,8 +82,27 @@ def clamp_width(width: float, height: float = HEIGHT) -> float:
     return max(MIN_WIDTH, min(MAX_WIDTH, width))
 
 
-def clamp_height(height: float) -> float:
-    return max(MIN_HEIGHT, min(MAX_HEIGHT, float(height)))
+def clamp_height(height: float, min_height: float = MIN_HEIGHT) -> float:
+    return max(min_height, min(MAX_HEIGHT, float(height)))
+
+
+def fit_dims(dims: Dims, max_height: float | None = None,
+             room: float | None = None) -> Dims:
+    """The user's size, made to fit a space (the macOS menu bar, right of the notch).
+
+    ``max_height``: never taller than this (the bar's height minus a little).
+    ``room``: never wider than this. Too narrow for the narrowest pill → a circle.
+    Neither given → ``dims`` unchanged (Windows).
+    """
+    if max_height is None and room is None:
+        return dims
+    height = dims.height
+    if max_height is not None:
+        height = min(height, max(BAR_MIN_HEIGHT, max_height))
+    width = height if dims.is_circle else dims.width
+    if room is not None and width > room:
+        width = room if room >= MIN_WIDTH else height
+    return Dims(width, height, min_height=BAR_MIN_HEIGHT)
 
 
 DEFAULT = Dims()
@@ -93,7 +116,8 @@ def window_height() -> float:
 
 class Anchor(Enum):
     RIGHT = "right"  # Windows: the row grows to the left from the "^" arrow
-    CENTER = "center"  # macOS: centered under the menu bar
+    LEFT = "left"  # macOS: the row grows to the right from the notch
+    CENTER = "center"  # centered on a point (not used by a platform today)
 
 
 def pill_width(morph: float, full: float | None = None, dims: Dims = DEFAULT) -> float:
@@ -158,11 +182,14 @@ def layout_row(widths: list[float], anchor: Anchor, container_width: float) -> l
     """Left x of each pill inside a container, keeping the order given (oldest first).
 
     RIGHT: the newest pill sits next to the anchor on the right, so older pills
-    move left when a new one arrives.
+    move left when a new one arrives. LEFT: the oldest pill sits next to the
+    anchor (the notch) and new ones join on the right, so nothing shifts.
     """
     total = row_width(widths)
     if anchor is Anchor.RIGHT:
         x = container_width - MARGIN - total
+    elif anchor is Anchor.LEFT:
+        x = MARGIN
     else:
         x = (container_width - total) / 2
     xs = []

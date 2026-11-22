@@ -17,6 +17,7 @@ from PySide6.QtCore import QObject, QPoint, QTimer
 from PySide6.QtGui import QGuiApplication
 
 from taskpill.platform.base import Platform, Rect, ScreenInfo, Spot, corner_spot
+from taskpill.ui import geometry as g
 from taskpill.ui.controller import PillController
 from taskpill.ui.pill_row import PillRow
 
@@ -57,7 +58,7 @@ class PlatformDriver(QObject):
             self._every(FULLSCREEN_MS, self._check_fullscreen),
             self._every(FOREGROUND_MS, self._check_foreground),
         ]
-        self._foreground: int | None = platform.active.foreground()
+        self._foreground: int | None = self._front()
         self.place()
 
     def _every(self, ms: int, slot) -> QTimer:
@@ -74,6 +75,7 @@ class PlatformDriver(QObject):
     def use_user_anchor(self, point: QPoint) -> None:
         """A position the user chose earlier (restored from settings)."""
         self._user_placed = True
+        self._leave_menu_bar()
         self._row.set_anchor(point)
 
     def set_hide_in_fullscreen(self, enabled: bool) -> None:
@@ -98,10 +100,19 @@ class PlatformDriver(QObject):
             return
         self._last_spot = spot
         self._row.set_room(spot.room)
+        self._row.set_bar_height(spot.max_height)
         self._row.set_anchor(QPoint(round(spot.x), round(spot.y)))
 
     def _on_moved(self, _anchor: QPoint) -> None:
         self._user_placed = True
+        self._leave_menu_bar()
+
+    def _leave_menu_bar(self) -> None:
+        """A spot the user chose is not the macOS menu bar: back to the size they set."""
+        self._last_spot = None
+        self._row.set_bar_height(None)
+        if self._platform.placement.anchor is g.Anchor.LEFT:
+            self._row.set_room(None)
 
     def _keep_on_top(self) -> None:
         if self._row.isVisible():
@@ -110,13 +121,26 @@ class PlatformDriver(QObject):
 
     def _check_foreground(self) -> None:
         """When the window in front changes, clear Done pills that belong to it."""
-        handle = self._platform.active.foreground()
+        handle = self._front()
         if handle is None or handle == self._foreground:
             return
         self._foreground = handle
         active = self._platform.active
-        self._controller.window_came_forward(
-            handle, lambda s: active.window_for(s.pid_chain, s.project_name))
+
+        def window_for(session) -> int | None:
+            try:
+                return active.window_for(session.pid_chain, session.project_name)
+            except Exception:
+                return None
+
+        self._controller.window_came_forward(handle, window_for)
+
+    def _front(self) -> int | None:
+        """The window in front, or None if the platform can't tell (never raises)."""
+        try:
+            return self._platform.active.foreground()
+        except Exception:
+            return None
 
     def _check_fullscreen(self) -> None:
         quiet = False

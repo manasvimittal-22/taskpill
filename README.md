@@ -1,11 +1,11 @@
 <h1 align="center">TaskPill</h1>
 
 <p align="center"><b>Know what Claude Code is doing without switching windows.</b><br>
-A small pill on your Windows taskbar that shows each Claude Code session's progress,<br>
+A small pill on your Windows taskbar or Mac menu bar that shows each Claude Code session's progress,<br>
 tells you the moment it needs you, and lets you know when it's done.</p>
 
 <p align="center">
-  <a href="../../releases/latest"><b>Download for Windows</b></a> ·
+  <a href="../../releases/latest"><b>Download for Windows or Mac</b></a> ·
   <a href="#on-your-taskbar">What it shows</a> ·
   <a href="#privacy">Privacy</a>
 </p>
@@ -59,13 +59,30 @@ You never need to start TaskPill yourself: Claude Code starts it when a session 
 
 **Uninstall:** Windows Settings → Apps → TaskPill → Uninstall. TaskPill's hooks are removed too (after a backup); your own hooks stay as they were.
 
+## Install (macOS 12 or later, Apple Silicon)
+
+1. Download `TaskPill-<version>-mac.dmg` from the [latest release](../../releases/latest), open it, and drag **TaskPill** into **Applications**.
+2. Open TaskPill from Applications. It's free and not notarized by Apple (that costs $99 a year), so the first time macOS says it **can't verify the developer**. Click **Done**, then go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to TaskPill. You only do this once.
+   - Once it's running, TaskPill removes the "downloaded from the internet" mark from its own app (and nothing else), so macOS doesn't block the small helper inside it that Claude Code starts on each event.
+3. TaskPill asks **"Connect TaskPill to Claude Code?"** Click **Connect**.
+4. Use Claude Code as usual, in Terminal, iTerm2 or VS Code. The pill appears in the menu bar, just right of the notch (or right of the middle of the screen if there's no notch). It stays as tall as the menu bar and stops before your menu-bar icons.
+
+What's different on a Mac:
+- There's no Dock icon. TaskPill lives in the menu bar: click its ring icon for Settings.
+- Clicking a pill brings that session's app forward (Terminal, iTerm2, VS Code). If the app has several windows, macOS brings its front one; TaskPill can't pick one exact window without the Accessibility permission, which it doesn't ask for.
+- The jump shortcut is **Control+Option+Space**.
+- TaskPill follows **Reduce motion** and **Increase contrast** in System Settings → Accessibility → Display.
+- **Updates:** TaskPill tells you when there's a new version and opens the download page; drag the new app into Applications to replace the old one (your settings stay).
+- **Uninstall:** click Disconnect in Settings (removes TaskPill's hooks, after a backup), quit it, and drag TaskPill from Applications to the Bin.
+- Intel Macs aren't supported yet.
+
 ## Privacy
 
 Your sessions stay on your computer. Claude Code hands each event to TaskPill on `127.0.0.1` only, and none of it is sent anywhere. The one thing TaskPill does online is the daily update check: it asks GitHub for the latest version number, and sends nothing about you or your sessions. You can switch it off in Settings. TaskPill never sees your files' contents or Claude's replies. The hook passes along only what the pill shows: the session and its folder, your prompt, the tool being used with its file path or command (cut short), and Claude Code's error text when a turn fails.
 
 ## Status
 
-TaskPill is new. Windows is supported now; macOS is planned.
+TaskPill is new. Windows is supported; macOS support is new and still being tested.
 
 ## License
 

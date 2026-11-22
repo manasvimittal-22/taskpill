@@ -99,6 +99,7 @@ class PillRow(QWidget):
         self._anchor = QPoint(0, 0)
         self._window_w = 0  # the width we last gave the window (0 = not placed yet)
         self._room: float | None = None
+        self._bar_height: float | None = None  # macOS: the pill fits in the menu bar
         self._last_models: list[PillModel] = []
         self._spoken_key: frozenset = frozenset()  # what a screen reader was last told
         self._spoken_waiting: set[str] = set()
@@ -132,7 +133,7 @@ class PillRow(QWidget):
 
     # ---- public API -----------------------------------------------------------
     def set_anchor(self, point: QPoint) -> None:
-        """Right edge (Windows) or center (macOS) of the row, in screen pixels."""
+        """Right edge (Windows) or left edge (macOS) of the row, in screen pixels."""
         self._anchor = QPoint(point)
         if self._window_w:
             self._place(self._window_w)
@@ -142,23 +143,39 @@ class PillRow(QWidget):
 
     @property
     def dims(self) -> g.Dims:
+        """The size the user set (what Settings saves)."""
         return self._dims
+
+    def shown_dims(self) -> g.Dims:
+        """The size actually drawn: the user's size, fitted to the macOS menu bar
+        (its height, and the room up to the first menu-bar icon). Windows: the same."""
+        room = self._room if self._options.anchor is g.Anchor.LEFT else None
+        return g.fit_dims(self._dims, self._bar_height, room)
 
     def set_dims(self, dims: g.Dims, *, instant: bool = False) -> None:
         """The pill's size (from Settings, or live while resizing)."""
         self._dims = dims
-        self._height.set(dims.height, self._clock(),
-                         instant=instant or self._options.reduced_motion)
-        self._retarget(instant=instant)
-        self._update_chip()
+        self._refit(instant=instant)
 
     def set_room(self, room: float | None) -> None:
         """Free width next to the anchor (e.g. up to the taskbar's app icons)."""
         if room == self._room:
             return
         self._room = room
-        if self._last_models:
-            self.set_models(self._last_models, self._sessions)
+        self._refit()
+
+    def set_bar_height(self, height: float | None) -> None:
+        """macOS: the pill is never taller than this (None: no limit)."""
+        if height == self._bar_height:
+            return
+        self._bar_height = height
+        self._refit()
+
+    def _refit(self, *, instant: bool = False) -> None:
+        self._height.set(self.shown_dims().height, self._clock(),
+                         instant=instant or self._options.reduced_motion)
+        self._retarget(instant=instant)
+        self._update_chip()
 
     def set_palette(self, palette: Palette) -> None:
         self._palette = palette
@@ -298,9 +315,11 @@ class PillRow(QWidget):
     def _grips(self, rect: QRectF) -> dict[str, QRectF]:
         span = max(14.0, rect.height() * 0.55)
         cy = rect.center().y()
+        # The free edge sets the width; the other end stays by the anchor: the
+        # left edge on Windows, the right edge on macOS (the left end is by the notch).
+        edge_x = rect.right() if self._options.anchor is g.Anchor.LEFT else rect.left()
         return {
-            # the left edge sets the width (the right end stays by the anchor)
-            "width": QRectF(rect.left() - 3, cy - span / 2, 6, span),
+            "width": QRectF(edge_x - 3, cy - span / 2, 6, span),
             # the top edge sets the height (grows evenly up and down). It sits a
             # little above the edge so it doesn't melt into the progress line,
             # which starts at the top center too.
@@ -318,10 +337,10 @@ class PillRow(QWidget):
 
     def _drag_resize(self, pos: QPointF) -> None:
         r = self._resize
-        dx = r.press.x() - pos.x()  # dragging left makes it wider
+        dx = r.press.x() - pos.x()  # dragging left makes it wider (right on macOS)
         dy = r.press.y() - pos.y()  # dragging up makes it taller
         if r.drag == "width":
-            grow = dx if self._options.anchor is g.Anchor.RIGHT else 2 * dx
+            grow = {g.Anchor.RIGHT: dx, g.Anchor.LEFT: -dx}.get(self._options.anchor, 2 * dx)
             dims = g.Dims(r.start.width + grow, r.start.height)
         else:
             dims = g.Dims(r.start.width, r.start.height + 2 * dy)
@@ -342,25 +361,27 @@ class PillRow(QWidget):
             self._chip.done.connect(self.finish_resize)
         # where the pill will be once it settles at its new size
         target = QRectF(rect)
-        target.setHeight(self._dims.height)
-        target.moveTop((self.height() - self._dims.height) / 2)
-        self._chip.show_size(self._dims.width, self._dims.height, self._global(target))
+        shown = self.shown_dims()
+        target.setHeight(shown.height)
+        target.moveTop((self.height() - shown.height) / 2)
+        self._chip.show_size(shown.width, shown.height, self._global(target))
 
     # ---- layout & animation ------------------------------------------------------
     def _target_width(self, m: PillModel, models: list[PillModel]) -> float:
+        dims = self.shown_dims()
         if self.resizing and m.session_id == self._resize.target:
-            return self._dims.full
+            return dims.full
         # A pill that needs you stays at the size the user set (Manasvi, 2026-11-17:
         # "leave it in the size it was set on"): a circle opens to that width,
         # never wider. (A circle-sized pill opens to MIN_WIDTH, so text fits.)
-        wide = min(g.fit_wide(self._room, len(models), self._dims), self._dims.text_width)
+        wide = min(g.fit_wide(self._room, len(models), dims), dims.text_width)
         return g.target_width(
             m.kind is PillKind.NEEDS_YOU,
             self._sessions >= 2,
             self._options.expand_needs_you,
             wide,
             done=m.kind is PillKind.DONE,
-            dims=self._dims,
+            dims=dims,
         )
 
     def _retarget(self, *, instant: bool = False) -> None:
@@ -401,6 +422,8 @@ class PillRow(QWidget):
         width = max(1, width)
         if self._options.anchor is g.Anchor.RIGHT:
             left = self._anchor.x() - width
+        elif self._options.anchor is g.Anchor.LEFT:
+            left = self._anchor.x() - int(g.MARGIN)
         else:
             left = self._anchor.x() - width // 2
         top = self._anchor.y() - self.height() // 2
@@ -494,7 +517,8 @@ class PillRow(QWidget):
         p.end()
 
     def _dims_for_morph(self, height: float) -> g.Dims:
-        return g.Dims(self._dims.text_width, height)
+        shown = self.shown_dims()
+        return g.Dims(shown.text_width, height, min_height=shown.min_height)
 
     def _paint_grips(self, p: QPainter, rect: QRectF, alpha: float) -> None:
         p.save()
