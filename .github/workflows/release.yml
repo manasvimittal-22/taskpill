@@ -8,12 +8,21 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # By hand (Actions → Release → Run workflow): build only the macOS .dmg for a release
+  # that already exists, from that tag's code. Added after v0.2.0's Mac job couldn't
+  # start (GitHub had retired the macos-14 runner), 2026-11-22.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to build the .dmg for (e.g. v0.2.0)"
+        required: true
 
 permissions:
   contents: write
 
 jobs:
   windows:
+    if: github.event_name == 'push'
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -55,15 +64,21 @@ jobs:
             --title "TaskPill ${{ github.ref_name }}" --generate-notes
 
   # macOS (Phase 5, 2026-11-22): runs after the Windows job has created the release.
-  # Apple Silicon only (macos-14). Every test runs here on a real Mac, including
+  # Apple Silicon only. Every test runs here on a real Mac, including
   # tests/platform/test_macos_real.py, which calls the real macOS APIs (they're
   # skipped on Windows and Linux). A failure stops the .dmg from being published.
   macos:
     needs: windows
-    runs-on: macos-14
+    # After the Windows job made the release, or by hand for an existing tag.
+    if: ${{ always() && (needs.windows.result == 'success' || github.event_name == 'workflow_dispatch') }}
+    runs-on: macos-latest  # Apple Silicon. A fixed version (macos-14) was retired under us.
     timeout-minutes: 30
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - uses: actions/setup-python@v5
         with:
@@ -81,4 +96,4 @@ jobs:
       - name: Attach the .dmg to the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.ref_name }}" dist/TaskPill-*-mac.dmg
+        run: gh release upload "$TAG" dist/TaskPill-*-mac.dmg --clobber
