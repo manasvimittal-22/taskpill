@@ -487,9 +487,16 @@ class TaskPillApp(QObject):
         timer.setInterval(ms)
         timer.timeout.connect(slot)
         timer.start()
+        if not hasattr(self, "_timers"):
+            self._timers: list[QTimer] = []
+        self._timers.append(timer)
         return timer
 
     def shutdown(self) -> None:
+        """Stop everything that runs on its own (timers, the platform polls) and hide."""
+        for timer in getattr(self, "_timers", []):
+            timer.stop()
+        self.driver.stop()
         self.tray.hide()
         self.row.hide()
 

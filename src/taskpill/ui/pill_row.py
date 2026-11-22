@@ -21,6 +21,7 @@ import html
 import time
 from dataclasses import dataclass, field
 
+import shiboken6
 from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QAccessible,
@@ -221,6 +222,8 @@ class PillRow(QWidget):
         self._retarget()
 
     def _update_hover_poll(self) -> None:
+        if not shiboken6.isValid(self._hover_poll):
+            return  # the window was already deleted (an app left over from a test)
         on = self._options.poll_hover and self.has_pills()
         if on and not self._hover_poll.isActive():
             self._hover_poll.start()

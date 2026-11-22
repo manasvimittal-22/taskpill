@@ -116,7 +116,10 @@ def app(qtbot, tmp_path, mac):
     taskpill.start()
     taskpill.sounds_played = sounds.played
     taskpill.test_clock = clock
-    return taskpill
+    yield taskpill
+    # Stop it before the fake Mac goes away: left running, its timers read the real
+    # macOS on a Mac runner and broke later tests (found on GitHub's Mac, 2026-11-22).
+    taskpill.shutdown()
 
 
 def settle(app):
@@ -304,6 +307,7 @@ def test_a_key_owned_elsewhere_is_left_alone(qtbot, tmp_path, mac):
     qtbot.addWidget(app.row)
     app.start()
     assert app.hotkey_active is False
+    app.shutdown()
 
 
 # ---- accessibility (Windows: animation effects + high-contrast themes, live) ------------------

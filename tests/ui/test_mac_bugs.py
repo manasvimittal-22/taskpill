@@ -121,3 +121,32 @@ def test_the_log_keeps_only_the_last_lines(tmp_path):
         log({"i": i})
     lines = (tmp_path / "log.jsonl").read_text(encoding="utf-8").splitlines()
     assert [json.loads(x)["i"] for x in lines] == [2, 3, 4]
+
+
+
+def test_shutdown_stops_every_timer(qtbot, tmp_path):
+    from PySide6.QtWidgets import QApplication
+
+    from taskpill.adapters.hooks_installer import HookCommand, HooksInstaller
+    from taskpill.adapters.settings_store import SettingsStore
+    from taskpill.app import TaskPillApp
+    from taskpill.platform.base import fallback_platform
+    from tests.conftest import FakeClock
+
+    app = TaskPillApp(QApplication.instance(), fallback_platform(),
+                      SettingsStore(tmp_path / "s.json"),
+                      HooksInstaller(tmp_path / "c.json", HookCommand("h", ())),
+                      FakeClock(), quit_app=lambda: None, show_tray=False)
+    qtbot.addWidget(app.row)
+    app.shutdown()
+    assert not any(t.isActive() for t in app._timers)
+    assert not any(t.isActive() for t in app.driver._timers)
+
+
+def test_a_deleted_window_ignores_option_changes(qtbot):
+    import shiboken6
+
+    row, _ = mac_row(qtbot)
+    timer = row._hover_poll
+    shiboken6.delete(timer)
+    row.set_options(RowOptions(anchor=g.Anchor.LEFT, poll_hover=True))  # no error

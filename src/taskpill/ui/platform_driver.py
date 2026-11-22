@@ -68,6 +68,11 @@ class PlatformDriver(QObject):
         timer.start()
         return timer
 
+    def stop(self) -> None:
+        """No more polling the platform (the app is shutting down)."""
+        for timer in self._timers:
+            timer.stop()
+
     @property
     def user_placed(self) -> bool:
         return self._user_placed
