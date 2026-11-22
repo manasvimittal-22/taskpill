@@ -365,7 +365,9 @@ class ResizeChip(_Surface):
 
     def show_size(self, width: float, height: float, pill: QRect) -> None:
         self.size_label.setText(f"{round(width)} × {round(height)}")
-        self.adjustSize()
-        self.move(place_above(self.size(), pill, SHADOW))
+        # Show first, then measure: before its first show the chip measures smaller
+        # than it ends up, and on a Mac it then grew down over the pill (2026-11-22).
         if not self.isVisible():
             self.show()
+        self.adjustSize()
+        self.move(place_above(self.size(), pill, SHADOW))

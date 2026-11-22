@@ -108,6 +108,19 @@ def fit_dims(dims: Dims, max_height: float | None = None,
 DEFAULT = Dims()
 
 
+def default_dims(circle: bool) -> Dims:
+    """The size a fresh install starts at, and what Reset size goes back to: a circle
+    on a Mac (Manasvi, 2026-11-22), the full pill on Windows."""
+    return Dims(HEIGHT, HEIGHT) if circle else DEFAULT
+
+
+def dims_from_settings(width: int, height: int, circle: bool) -> Dims:
+    """Settings store 0 as the width for "this system's default"."""
+    if width == 0:
+        return Dims(height, height) if circle else Dims(FULL_WIDTH, height)
+    return Dims(width, height)
+
+
 def window_height() -> float:
     """The row window is always tall enough for the tallest pill, so changing the
     height never resizes the window."""

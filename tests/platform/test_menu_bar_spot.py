@@ -13,7 +13,6 @@ from taskpill.platform.base import (
     guess_menu_bar,
     spot_beside_notch,
 )
-from taskpill.ui.geometry import MAX_HEIGHT
 
 # A 14" MacBook Pro at its default "looks like" size: 1512 × 982 pt, a 37 pt menu bar,
 # the notch from x = 663 to 849 (186 pt wide, centred).
@@ -47,24 +46,32 @@ def test_icons_left_of_the_row_are_not_in_the_way():
     assert spot.room == CLOCK.left - NOTCH_GAP - (NOTCH_RIGHT + NOTCH_GAP)
 
 
-def test_an_icon_straddling_the_start_leaves_no_room_so_the_row_drops_under_the_bar():
-    straddling = Rect(850, 0, 900, 37)
-    spot = spot_beside_notch(MenuBarInfo(MBP, 37.0, NOTCH_RIGHT, (straddling,)))
-    assert spot.x == NOTCH_RIGHT + NOTCH_GAP  # same x, so it still reads as "by the notch"
-    assert spot.y == 37.0 + NOTCH_GAP + MAX_HEIGHT / 2
-    assert spot.room is None and spot.max_height is None
-
-
-def test_a_crowded_bar_too_narrow_for_a_circle_drops_under_the_bar():
-    # 20 pt free: a 31 pt circle doesn't fit
-    icon = Rect(round(NOTCH_RIGHT + NOTCH_GAP + 20 + NOTCH_GAP), 0, 1500, 37)
+def test_it_never_leaves_the_menu_bar():
+    # Manasvi, 2026-11-22: the pill coming down when the menu bar shows "shouldnt happen".
+    # 20 pt free: not even a 31 pt circle fits, but it stays in the bar as a circle.
+    icon = Rect(round(NOTCH_RIGHT + NOTCH_GAP + 20 + NOTCH_GAP), 0, 920, 37)
     spot = spot_beside_notch(MenuBarInfo(MBP, 37.0, NOTCH_RIGHT, (icon,)))
-    assert spot.max_height is None
+    assert spot.y == pytest.approx(18.5)
+    assert spot.room == 31 and spot.max_height == 31  # room for a circle, no less
+
+
+def test_a_whole_width_strip_is_not_an_icon():
+    # What a real Mac reported once the bar slid in: something wide at the icons' level.
+    strip = Rect(0, 0, 1512, 37)
+    spot = spot_beside_notch(MenuBarInfo(MBP, 37.0, NOTCH_RIGHT, (strip, WIFI)))
+    assert spot.y == pytest.approx(18.5)
+    assert spot.room == WIFI.left - NOTCH_GAP - (NOTCH_RIGHT + NOTCH_GAP)
+
+
+def test_something_starting_left_of_the_notch_is_not_an_icon():
+    straddling = Rect(600, 0, 900, 37)
+    spot = spot_beside_notch(MenuBarInfo(MBP, 37.0, NOTCH_RIGHT, (straddling, CLOCK)))
+    assert spot.room == CLOCK.left - NOTCH_GAP - (NOTCH_RIGHT + NOTCH_GAP)
 
 
 def test_just_room_for_a_circle_stays_in_the_bar():
     left = NOTCH_RIGHT + NOTCH_GAP
-    icon = Rect(round(left + 31 + NOTCH_GAP), 0, 1500, 37)
+    icon = Rect(round(left + 31 + NOTCH_GAP), 0, 940, 37)
     spot = spot_beside_notch(MenuBarInfo(MBP, 37.0, NOTCH_RIGHT, (icon,)))
     assert spot.room == 31
     assert spot.max_height == 31

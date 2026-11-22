@@ -118,6 +118,7 @@ GUI_CHECK = textwrap.dedent("""
     macos.MacTopmost().keep_on_top(int(w.winId()))
     win = macos.ns_window(int(w.winId()))
     from AppKit import NSApplication
+    macos.activate_self()
     hotkey = macos.MacHotkey()
     registered = hotkey.register(lambda: None)
     hotkey.unregister()

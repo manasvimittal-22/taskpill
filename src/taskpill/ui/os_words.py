@@ -15,12 +15,13 @@ class OsWords:
     home: str  # where the pill goes back to: "Back next to <home>."
     menu: str  # where Connect/Disconnect lives: "from <menu>"
     icon: str  # "Right-click <icon> to update."
+    default_size: str  # "Back to <default_size>." (Settings → Reset size)
 
 
 WINDOWS = OsWords(system="Windows", home="the ^ arrow", menu="the tray menu",
-                  icon="the TaskPill tray icon")
+                  icon="the TaskPill tray icon", default_size="232 × 32")
 MACOS = OsWords(system="macOS", home="the notch", menu="the menu-bar icon",
-                icon="the TaskPill menu-bar icon")
+                icon="the TaskPill menu-bar icon", default_size="a circle")
 
 
 def words_for(platform: str | None = None) -> OsWords:

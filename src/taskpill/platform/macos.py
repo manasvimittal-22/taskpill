@@ -130,7 +130,16 @@ def _menu_bar_icons(screen: Rect, bar_height: float) -> list[Rect]:
 
 
 class MacPlacement:
+    """Where the row goes. With "Automatically hide and show the menu bar", macOS
+    reports no icons while the bar is away, so the last icons seen are kept: the
+    pill then keeps one size whether the bar is showing or not."""
+
     anchor = Anchor.LEFT
+
+    def __init__(self, log: Callable[[dict], None] | None = None) -> None:
+        self._icons: tuple[Rect, ...] = ()
+        self._log = log
+        self._last: Spot | None = None
 
     def spot(self, screens: Sequence[ScreenInfo]) -> Spot | None:
         try:
@@ -138,7 +147,53 @@ class MacPlacement:
         except Exception:
             info = None  # a wrong guess about an API must not lose the pill
         info = info or guess_menu_bar(screens)
-        return spot_beside_notch(info) if info is not None else None
+        if info is None:
+            return None
+        if info.icons:
+            self._icons = info.icons
+        elif self._icons:
+            info = dataclasses.replace(info, icons=self._icons)
+        spot = spot_beside_notch(info)
+        if spot != self._last and self._log is not None:
+            with contextlib.suppress(Exception):
+                self._log(placement_record(info, spot))
+        self._last = spot
+        return spot
+
+
+def placement_record(info: MenuBarInfo, spot: Spot) -> dict:
+    """One line for menubar-log.jsonl: what the menu bar looked like and where the
+    pill went. Only sizes and positions, nothing about what's on screen."""
+    def box(r: Rect) -> list[int]:
+        return [r.left, r.top, r.right, r.bottom]
+
+    return {"screen": box(info.screen), "bar": info.bar_height, "notch_right": info.notch_right,
+            "icons": [box(r) for r in info.icons],
+            "spot": {"x": spot.x, "y": spot.y, "room": spot.room, "max_height": spot.max_height}}
+
+
+class JsonlLog:
+    """Keeps the last ``limit`` lines in a small local file (for bug reports from a
+    Mac; nothing is sent anywhere)."""
+
+    def __init__(self, path, limit: int = 50, clock=None) -> None:
+        import time
+
+        self._path = path
+        self._limit = limit
+        self._clock = clock or time.time
+
+    def __call__(self, record: dict) -> None:
+        import json
+
+        line = json.dumps({"t": round(self._clock()), **record})
+        try:
+            lines = self._path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            lines = []
+        lines = [*lines, line][-self._limit:]
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 # ---- the pill's window: above the menu bar, on every Space ------------------------------------
@@ -178,6 +233,20 @@ class MacTopmost:
         # is almost never the active app, so that would hide the pill all the time.
         if window.hidesOnDeactivate():
             window.setHidesOnDeactivate_(False)
+
+
+def activate_self() -> None:
+    """Make TaskPill the active app. On a real Mac (2026-11-22) a click on the
+    right-click menu did nothing: TaskPill is never the active app, the click made
+    macOS activate it first, and Qt closed the menu during that switch. Menu-bar
+    apps activate themselves before opening a menu; so does TaskPill."""
+    from AppKit import NSApplication
+
+    app = NSApplication.sharedApplication()
+    if hasattr(app, "activate"):  # macOS 14+
+        app.activate()
+    else:
+        app.activateIgnoringOtherApps_(True)
 
 
 def become_agent_app() -> None:
@@ -479,8 +548,12 @@ def create_macos_platform() -> Platform:
     # Not strict: remember the window in front at a prompt even when the session's
     # processes don't reach it (iTerm2, tmux). See choose_window.
     memory = WindowMemory(strict=False)
-    return dataclasses.replace(fallback_platform(), placement=MacPlacement(),
+    from taskpill import paths
+
+    log = JsonlLog(paths.config_dir() / "menubar-log.jsonl")
+    return dataclasses.replace(fallback_platform(), placement=MacPlacement(log),
                                topmost=MacTopmost(), name="macos",
                                focuser=MacFocuser(memory), active=MacActiveWindow(memory),
                                fullscreen=MacFullscreen(), hotkey=MacHotkey(),
-                               prefs=MacSystemPrefs())
+                               prefs=MacSystemPrefs(), circle_by_default=True,
+                               activate_self=activate_self)

@@ -69,6 +69,7 @@ You never need to start TaskPill yourself: Claude Code starts it when a session 
 
 What's different on a Mac:
 - There's no Dock icon. TaskPill lives in the menu bar: click its ring icon for Settings.
+- The pill starts as a small circle next to the notch. Right-click it → **Resize…** for a full pill.
 - Clicking a pill brings that session's app forward (Terminal, iTerm2, VS Code). If the app has several windows, macOS brings its front one; TaskPill can't pick one exact window without the Accessibility permission, which it doesn't ask for.
 - The jump shortcut is **Control+Option+Space**.
 - TaskPill follows **Reduce motion** and **Increase contrast** in System Settings → Accessibility → Display.

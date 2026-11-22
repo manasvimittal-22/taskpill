@@ -412,7 +412,8 @@ def test_app_saves_and_restores_the_size(qtbot, env):  # noqa: F811
     again, _, _ = build(qtbot, env)
     assert again.row.dims == g.Dims(300, 40)
     again.reset_size()
-    assert SettingsStore(env["settings"]).load().pill_width == 232
+    assert SettingsStore(env["settings"]).load().pill_width == 0  # the system's default
+    assert again.row.dims == g.Dims()  # on Windows (and this fake platform): 232 × 32
 
 
 def test_size_settings_are_clamped(tmp_path):

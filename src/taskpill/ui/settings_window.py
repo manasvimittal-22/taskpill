@@ -196,7 +196,7 @@ class SettingsWindow(QWidget):
         # Reset size lives here (Manasvi, 2026-11-17), not in the pill's menu.
         self.reset_size_button = QPushButton("Reset size")
         self.reset_size_button.clicked.connect(self.reset_size_requested)
-        self._row(root, "Back to 232 × 32.", self.reset_size_button, role="hint")
+        self._row(root, f"Back to {WORDS.default_size}.", self.reset_size_button, role="hint")
         # The two buttons line up. (A fixed width: sizeHint is measured before the
         # stylesheet's padding applies, so matching sizeHints doesn't work.)
         for button in (reset, self.reset_size_button):

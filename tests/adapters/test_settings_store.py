@@ -46,3 +46,13 @@ def test_never_quit_is_allowed(tmp_path):
     path = tmp_path / "settings.json"
     path.write_text('{"auto_quit_minutes": 0}', encoding="utf-8")
     assert SettingsStore(path).load().auto_quit_minutes == 0
+
+
+
+def test_width_zero_means_the_systems_default(tmp_path):
+    store = SettingsStore(tmp_path / "s.json")
+    assert Settings().pill_width == 0
+    store.save(Settings(pill_width=0))
+    assert store.load().pill_width == 0
+    store.save(Settings(pill_width=232))  # files from before keep their number
+    assert store.load().pill_width == 232

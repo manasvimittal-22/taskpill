@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Protocol
 
-from taskpill.ui.geometry import MAX_HEIGHT, Anchor
+from taskpill.ui.geometry import Anchor
 
 
 # The shortcut that jumps to the session that needs you (Manasvi, 2026-11-18). Shown in Settings.
@@ -218,6 +218,10 @@ class Platform:
     active: ActiveWindow = field(default_factory=lambda: _NoActiveWindow())
     hotkey: GlobalHotkey = field(default_factory=lambda: _NoHotkey())
     prefs: SystemPrefsProbe = field(default_factory=lambda: _NoPrefs())
+    circle_by_default: bool = False  # macOS: a fresh pill starts as a circle (2026-11-22)
+    # Make TaskPill the active app before it shows something to click (its menu,
+    # resize mode, Settings). macOS needs it (see macos.activate_self); Windows doesn't.
+    activate_self: Callable[[], None] = field(default_factory=lambda: _do_nothing)
 
 
 # ---- pure decisions -----------------------------------------------------------------------
@@ -252,20 +256,28 @@ def spot_beside_notch(info: MenuBarInfo) -> Spot:
 
     Left edge of the row (LEFT anchor) 8 pt right of the notch; with no notch,
     where a notch's right edge would be. Vertically centred on the bar. ``room``
-    reaches to the first menu-bar icon on the right. If not even a circle fits
-    there (a crowded menu bar), the row drops just under the menu bar instead.
+    reaches to the first menu-bar icon on the right.
+
+    It never leaves the menu bar (Manasvi, 2026-11-22: the pill coming down when
+    the menu bar shows "shouldnt happen. this is a big problem"). With no room it
+    is a circle. Only real icons count: ones that start right of the notch and
+    aren't wider than a third of the screen. (When the bar slid in on a real Mac,
+    something wide at the icons' level made the old rule drop the pill below it.)
     """
     s = info.screen
     edge = info.notch_right if info.notch_right is not None else (
         (s.left + s.right) / 2 + NOTCHLESS_HALF)
     left = edge + NOTCH_GAP
     max_height = round(info.bar_height - 2 * bar_inset(info.bar_height))
-    in_the_way = [r.left for r in info.icons if r.right > left]
-    room = min(in_the_way, default=s.right) - NOTCH_GAP - left
-    if room < max_height:
-        under = s.top + info.bar_height + NOTCH_GAP + MAX_HEIGHT / 2
-        return Spot(left, under, None, None)
-    return Spot(left, s.top + info.bar_height / 2, room, max_height)
+    room = min((r.left for r in real_icons(info, edge)), default=s.right) - NOTCH_GAP - left
+    return Spot(left, s.top + info.bar_height / 2, max(room, max_height), max_height)
+
+
+def real_icons(info: MenuBarInfo, edge: float) -> list[Rect]:
+    """Menu-bar icons right of ``edge`` (the notch), leaving out anything far too
+    wide to be an icon (the bar's own background, a whole-width strip)."""
+    widest = info.screen.width / 3
+    return [r for r in info.icons if r.left >= edge and 0 < r.width <= widest]
 
 
 def bar_inset(bar_height: float) -> float:
@@ -482,6 +494,10 @@ class _NoHotkey:
 class _NoTopmost:
     def keep_on_top(self, window_id: int) -> None:
         return None
+
+
+def _do_nothing() -> None:
+    return None
 
 
 def fallback_platform() -> Platform:

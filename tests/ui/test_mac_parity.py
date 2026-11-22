@@ -54,6 +54,7 @@ class Mac:
         self.increase_contrast = False
         self.dark = True
         self.policy = None
+        self.activations = 0
 
 
 class Sounds:
@@ -83,8 +84,11 @@ def mac(monkeypatch):
     monkeypatch.setattr(macos.MacHotkey.__init__, "__defaults__", (lambda: world.carbon,))
 
     appkit = types.ModuleType("AppKit")
+    def activate():
+        world.activations += 1
+
     appkit.NSApplication = NS(sharedApplication=lambda: NS(
-        setActivationPolicy_=lambda p: setattr(world, "policy", p)))
+        setActivationPolicy_=lambda p: setattr(world, "policy", p), activate=activate))
     appkit.NSWorkspace = NS(sharedWorkspace=lambda: NS(
         accessibilityDisplayShouldReduceMotion=lambda: world.reduce_motion,
         accessibilityDisplayShouldIncreaseContrast=lambda: world.increase_contrast))
@@ -135,7 +139,21 @@ def test_no_dock_icon(app, mac):
 
 
 # ---- placement (Windows: left of the "^" arrow, sized to the taskbar) -----------------------
+def test_a_fresh_mac_starts_as_a_circle(app, mac):
+    # Manasvi, 2026-11-22: "for mac, default it to the circle size"
+    start_session(app, mac)
+    assert app.row.dims.is_circle
+    assert app.row.shown_dims() == g.Dims(31, 31, min_height=g.BAR_MIN_HEIGHT)
+    app.row.set_dims(g.Dims(300, 32))
+    app.reset_size()
+    assert app.row.dims.is_circle  # Reset size goes back to the circle on a Mac
+    app.row.set_dims(g.Dims(300, 32))
+    app.row.reset_size()  # the Reset button in resize mode too
+    assert app.row.dims.is_circle
+
+
 def test_a_working_session_shows_a_pill_right_of_the_notch(app, mac):
+    app.row.set_dims(g.Dims())  # someone who chose the full pill
     start_session(app, mac)
     assert app.row.has_pills()
     assert app.row.anchor().x() == round(NOTCH_RIGHT + 8)
@@ -151,6 +169,7 @@ def test_a_wide_menu_bar_keeps_the_set_width(app, mac):
     mac.menu_bar = MenuBarInfo(SCREEN, 37.0, 300.0, ICONS)
     app.driver._last_spot = None
     app.driver.place()
+    app.row.set_dims(g.Dims())  # someone who chose the full pill
     start_session(app, mac)
     assert app.row.shown_dims().width == g.FULL_WIDTH
 
@@ -164,12 +183,24 @@ def test_two_sessions_become_circles_growing_right(app, mac):
     assert items[0].x.target < items[1].x.target  # the first stays by the notch
 
 
-def test_a_crowded_menu_bar_moves_the_row_under_it(app, mac):
-    mac.menu_bar = MenuBarInfo(SCREEN, 37.0, NOTCH_RIGHT, (Rect(470, 0, 795, 37),))
+def test_a_crowded_menu_bar_keeps_a_circle_in_the_bar(app, mac):
+    mac.menu_bar = MenuBarInfo(SCREEN, 37.0, NOTCH_RIGHT, (Rect(470, 0, 520, 37),))
     app.driver._last_spot = None
     app.driver.place()
-    assert app.row.anchor().y() > 37
-    assert app.row.shown_dims() == app.row.dims  # the size you set
+    assert app.row.anchor().y() == round(37 / 2)  # never under the bar
+    assert app.row.shown_dims().is_circle
+
+
+def test_the_bar_sliding_in_does_not_move_the_pill(app, mac):
+    # "Automatically hide and show the menu bar": while hidden, macOS reports no icons;
+    # when it slides in, the icons and a whole-width strip appear (bug, 2026-11-22).
+    start_session(app, mac)
+    mac.menu_bar = MenuBarInfo(SCREEN, 37.0, NOTCH_RIGHT, ())
+    app.driver.place()
+    hidden = (app.row.anchor(), app.row.shown_dims())
+    mac.menu_bar = MenuBarInfo(SCREEN, 37.0, NOTCH_RIGHT, (Rect(0, 0, 800, 37), *ICONS))
+    app.driver.place()
+    assert (app.row.anchor(), app.row.shown_dims()) == hidden
 
 
 def test_drag_and_reset_position(app, mac):
@@ -291,3 +322,33 @@ def test_increase_contrast_uses_accessible_colors_and_drops_the_glow(app, mac):
     mac.dark = False
     app._check_system_prefs()
     assert app._palette() == high_contrast_palette(increase_contrast_colors(dark=False))
+
+
+# ---- the right-click menu, resize mode and Settings take clicks (bug, 2026-11-22) -------------
+def test_the_menu_makes_taskpill_active_first(app, mac):
+    start_session(app, mac)
+    before = mac.activations  # Settings opens by itself at start while not connected
+    menu = app.open_pill_menu("a", app.row.geometry())
+    assert mac.activations == before + 1
+    menu.close()
+
+
+def test_resize_and_settings_make_taskpill_active(app, mac):
+    start_session(app, mac)
+    before = mac.activations
+    assert app.begin_resize("a")
+    app.row.cancel_resize()
+    app.open_settings().close()
+    assert mac.activations == before + 2
+
+
+def test_the_menu_items_still_do_their_job(app, mac):
+    start_session(app, mac)
+    menu = app.open_pill_menu("a", app.row.geometry())
+    actions = {a.text(): a for a in menu.actions() if a.text()}
+    actions["Go to api"].trigger()
+    assert mac.activated == [TERMINAL]
+    actions["Resize…"].trigger()
+    assert app.row.resizing
+    app.row.cancel_resize()
+    menu.close()

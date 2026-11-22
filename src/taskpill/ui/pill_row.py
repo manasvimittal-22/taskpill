@@ -43,6 +43,7 @@ from taskpill.ui.view_model import PillKind, PillModel
 FRAME_MS = 16
 DRAG_THRESHOLD = 4
 GRIP_HIT = 8.0  # extra grab room around a resize grip
+HOVER_POLL_MS = 100  # macOS: how often the pointer is checked for hover
 
 
 @dataclass
@@ -52,6 +53,10 @@ class RowOptions:
     expand_needs_you: bool = True
     dot: bool = True
     reduced_motion: bool = False
+    # macOS sends no mouse-move events to an app that isn't active, and TaskPill
+    # never is, so hover comes from polling the pointer (found on a Mac, 2026-11-22).
+    poll_hover: bool = False
+    circle_by_default: bool = False  # what Reset size goes back to (a circle on a Mac)
 
 
 @dataclass
@@ -130,6 +135,9 @@ class PillRow(QWidget):
         self._hover_watch.setInterval(200)
         self._hover_watch.timeout.connect(self._check_hover)
         self._cursor_pos = QCursor.pos  # replaceable in tests
+        self._hover_poll = QTimer(self)
+        self._hover_poll.setInterval(HOVER_POLL_MS)
+        self._hover_poll.timeout.connect(self.poll_hover)
 
     # ---- public API -----------------------------------------------------------
     def set_anchor(self, point: QPoint) -> None:
@@ -209,7 +217,31 @@ class PillRow(QWidget):
 
     def set_options(self, options: RowOptions) -> None:
         self._options = options
+        self._update_hover_poll()
         self._retarget()
+
+    def _update_hover_poll(self) -> None:
+        on = self._options.poll_hover and self.has_pills()
+        if on and not self._hover_poll.isActive():
+            self._hover_poll.start()
+        elif not on and self._hover_poll.isActive():
+            self._hover_poll.stop()
+
+    def poll_hover(self) -> None:
+        """What a mouse move would do, from where the pointer is right now."""
+        if self.resizing or self._press is not None or self.isHidden():
+            return
+        local = QPointF(self.mapFromGlobal(self._cursor_pos()))
+        item = self._item_at(local) if self.rect().contains(local.toPoint()) else None
+        sid = item.model.session_id if item else None
+        if sid == self._hovered:
+            return
+        if item is None:
+            self.leaveEvent(None)
+            return
+        self._hovered = sid
+        self.update()
+        self._show_card(item)
 
     def set_models(self, models: list[PillModel], sessions: int | None = None) -> None:
         """``sessions``: how many sessions are running, including ones hidden right
@@ -255,6 +287,7 @@ class PillRow(QWidget):
 
         if self._resize is not None and self._resize.target not in incoming:
             self._end_resize()  # the pill being resized went away
+        self._update_hover_poll()
         self._relayout()
         self._refresh_card()
 
@@ -294,7 +327,7 @@ class PillRow(QWidget):
 
     def reset_size(self) -> None:
         """Back to the default size (stays in resize mode if it's on)."""
-        self.set_dims(g.Dims())
+        self.set_dims(g.default_dims(self._options.circle_by_default))
 
     def _end_resize(self) -> None:
         if self._resize is None:

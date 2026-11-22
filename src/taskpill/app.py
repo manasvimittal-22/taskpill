@@ -31,7 +31,7 @@ from taskpill.services.task_history import TaskHistory
 from taskpill.services.updates import UpdateService, UpdateState, UpdateStatus
 from taskpill.ui.connect_dialog import ConnectDialog
 from taskpill.ui.controller import PillController
-from taskpill.ui.geometry import Dims
+from taskpill.ui.geometry import HEIGHT, Dims, default_dims, dims_from_settings
 from taskpill.ui.icon import TrayState
 from taskpill.ui.os_words import WORDS
 from taskpill.ui.pill_row import PillRow, RowOptions
@@ -87,7 +87,9 @@ class TaskPillApp(QObject):
         pal = self._palette()
         self.store = SessionStore(clock, task_history=task_history)
         self.row = PillRow(self._row_options(), pal,
-                           dims=Dims(self.settings.pill_width, self.settings.pill_height))
+                           dims=dims_from_settings(self.settings.pill_width,
+                                                   self.settings.pill_height,
+                                                   platform.circle_by_default))
         self._menu: PillMenu | None = None
         self.row.menu_requested.connect(self.open_pill_menu)
         self.row.resize_finished.connect(self._save_size)
@@ -186,7 +188,7 @@ class TaskPillApp(QObject):
         if session.state in (SessionState.DONE, SessionState.LIMITED):
             menu.add("Clear", lambda: self.store.acknowledge(session_id))
         menu.addSeparator()
-        menu.add("Resize…", lambda: self.row.begin_resize(session_id))
+        menu.add("Resize…", lambda: self.begin_resize(session_id))
         # Reset position, not Reset size (Manasvi, 2026-11-17); the size resets from
         # Resize… → Reset. Only offered once the row has been dragged away.
         if self._screen_key() in self.settings.positions:
@@ -195,16 +197,25 @@ class TaskPillApp(QObject):
         menu.add("Settings…", self.open_settings)
         menu.add("Quit TaskPill", self._quit_app)
         self._menu = menu  # keep it alive while it's open
+        self._activate_self()
         menu.popup_above(pill)
         return menu
+
+    def begin_resize(self, session_id: str) -> bool:
+        self._activate_self()  # the Done / Cancel / Reset buttons need clicks on a Mac
+        return self.row.begin_resize(session_id)
+
+    def _activate_self(self) -> None:
+        with contextlib.suppress(Exception):
+            self._platform.activate_self()
 
     def _save_size(self, dims: Dims) -> None:
         self._save(replace(self.settings, pill_width=round(dims.width),
                            pill_height=round(dims.height)))
 
     def reset_size(self) -> None:
-        self.row.set_dims(Dims())
-        self._save_size(Dims())
+        self.row.set_dims(default_dims(self._platform.circle_by_default))
+        self._save(replace(self.settings, pill_width=0, pill_height=round(HEIGHT)))
 
     # ---- startup -----------------------------------------------------------------------
     def start(self) -> None:
@@ -227,6 +238,7 @@ class TaskPillApp(QObject):
         dialog = ConnectDialog(self._palette(), self._connect)
         dialog.finished.connect(self._on_connect_dialog_closed)
         self._connect_dialog = dialog
+        self._activate_self()
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
@@ -286,6 +298,7 @@ class TaskPillApp(QObject):
 
     # ---- settings ----------------------------------------------------------------------
     def open_settings(self) -> SettingsWindow:
+        self._activate_self()  # on a Mac, a window from an inactive app opens behind others
         if self._settings_window is None:
             window = SettingsWindow(self.settings, self._palette(), self.is_connected())
             window.settings_changed.connect(self._save)
@@ -334,7 +347,9 @@ class TaskPillApp(QObject):
         return RowOptions(anchor=self._platform.placement.anchor,
                           glow=s.glow and self._prefs.high_contrast is None,
                           expand_needs_you=s.expand_needs_you, dot=s.dot,
-                          reduced_motion=s.reduced_motion or self._prefs.reduce_motion)
+                          reduced_motion=s.reduced_motion or self._prefs.reduce_motion,
+                          poll_hover=self._platform.name == "macos",
+                          circle_by_default=self._platform.circle_by_default)
 
     def _read_prefs(self) -> SystemPrefs:
         try:

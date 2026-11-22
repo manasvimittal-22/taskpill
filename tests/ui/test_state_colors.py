@@ -102,4 +102,4 @@ def test_settings_has_reset_size(qtbot, tmp_path):
     window = app.open_settings()
     window.reset_size_button.click()
     assert app.row.dims == g.Dims()
-    assert SettingsStore(env["settings"]).load().pill_width == 232
+    assert SettingsStore(env["settings"]).load().pill_width == 0  # the system's default

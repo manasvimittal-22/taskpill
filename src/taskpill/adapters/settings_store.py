@@ -40,7 +40,9 @@ class Settings:
     done_color: str = "mint"
     limited_color: str = "crimson"  # out of usage
     reduced_motion: bool = False
-    pill_width: int = 232
+    # 0 = this system's default (Manasvi, 2026-11-22: "for mac, default it to the circle
+    # size"): a circle on a Mac, 232 on Windows. Files from before keep their number.
+    pill_width: int = 0
     pill_height: int = 32
     # behavior
     hide_in_fullscreen: bool = True
@@ -97,6 +99,8 @@ def _valid(name: str, value: Any, default: Any) -> Any:
     if name in ("pill_width", "pill_height"):
         low, high = WIDTH_RANGE if name == "pill_width" else HEIGHT_RANGE
         ok = isinstance(value, int) and not isinstance(value, bool)
+        if ok and name == "pill_width" and value == 0:
+            return 0  # the system's default size
         if ok and name == "pill_width" and value <= HEIGHT_RANGE[1]:
             return max(HEIGHT_RANGE[0], value)  # a circle pill (width == height)
         return max(low, min(high, value)) if ok else default

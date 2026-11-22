@@ -250,3 +250,21 @@ def test_update_notice_names_the_menu_bar_icon_on_a_mac():
     from taskpill.ui.os_words import MACOS
 
     assert MACOS.icon == "the TaskPill menu-bar icon"
+
+
+
+def test_activate_self_uses_the_new_api_when_there(fake_mac):  # noqa: F811
+    calls = []
+    sys.modules["AppKit"].NSApplication = NS(sharedApplication=lambda: NS(
+        activate=lambda: calls.append("activate")))
+    macos.activate_self()
+    sys.modules["AppKit"].NSApplication = NS(sharedApplication=lambda: NS(
+        activateIgnoringOtherApps_=lambda flag: calls.append(("old", flag))))
+    macos.activate_self()
+    assert calls == ["activate", ("old", True)]
+
+
+def test_windows_never_needs_to_activate_itself():
+    from taskpill.platform.base import fallback_platform
+
+    assert fallback_platform().activate_self() is None
