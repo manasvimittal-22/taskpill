@@ -34,5 +34,5 @@ def due(last_check: float, now: float) -> bool:
 class Release:
     version: str  # "0.2.0" (no "v")
     page_url: str  # the release page on GitHub
-    installer_url: str | None  # TaskPill-Setup-<version>.exe, if attached
+    installer_url: str | None  # TaskPill-Setup-<version>-Windows.exe, if attached
     installer_size: int = 0

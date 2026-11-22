@@ -58,10 +58,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Each file gets a label on the release page (file#label), and the notes start
+          # with "Which file do I download?" (.github/release-notes.md).
+          $installer = (Get-ChildItem dist\TaskPill-Setup-*-Windows.exe).FullName
+          $portable = (Get-ChildItem dist\TaskPill-*-Windows-Portable.zip).FullName
           gh release create "${{ github.ref_name }}" `
-            (Get-ChildItem dist\TaskPill-Setup-*.exe).FullName `
-            (Get-ChildItem dist\TaskPill-*-portable.zip).FullName `
-            --title "TaskPill ${{ github.ref_name }}" --generate-notes
+            "$installer#Windows: installer (recommended)" `
+            "$portable#Windows: portable zip, no install" `
+            --title "TaskPill ${{ github.ref_name }}" `
+            --notes-file .github/release-notes.md --generate-notes
 
   # macOS (Phase 5, 2026-11-22): runs after the Windows job has created the release.
   # Apple Silicon only. Every test runs here on a real Mac, including
@@ -96,4 +101,6 @@ jobs:
       - name: Attach the .dmg to the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$TAG" dist/TaskPill-*-mac.dmg --clobber
+        run: |
+          DMG=$(ls dist/TaskPill-*-Mac-AppleSilicon.dmg)
+          gh release upload "$TAG" "$DMG#Mac: Apple Silicon, M1 or newer (.dmg)" --clobber

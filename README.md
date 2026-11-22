@@ -46,7 +46,7 @@ Click a pill and that session's VS Code window or terminal comes to the front, e
 
 ## Install (Windows 10 and 11)
 
-1. Download `TaskPill-Setup-<version>.exe` from the [latest release](../../releases/latest). (Prefer no installer? Take `TaskPill-<version>-portable.zip`, unzip it anywhere and run `TaskPill.exe`.)
+1. Download **`TaskPill-Setup-<version>-Windows.exe`** from the [latest release](../../releases/latest). (Prefer no installer? Take **`TaskPill-<version>-Windows-Portable.zip`**, unzip it anywhere and run `TaskPill.exe`.)
 2. Run it. It installs just for you, with no admin prompt.
    - TaskPill is free and not signed yet, so Windows may say **"Windows protected your PC"**. Click **More info → Run anyway**.
    - If **Smart App Control** is on (Windows Security → App & browser control), Windows blocks unsigned apps with no way to allow them. Signed builds are planned.
@@ -61,7 +61,7 @@ You never need to start TaskPill yourself: Claude Code starts it when a session 
 
 ## Install (macOS 12 or later, Apple Silicon)
 
-1. Download `TaskPill-<version>-mac.dmg` from the [latest release](../../releases/latest), open it, and drag **TaskPill** into **Applications**.
+1. Download **`TaskPill-<version>-Mac-AppleSilicon.dmg`** from the [latest release](../../releases/latest), open it, and drag **TaskPill** into **Applications**.
 2. Open TaskPill from Applications. It's free and not notarized by Apple (that costs $99 a year), so the first time macOS says it **can't verify the developer**. Click **Done**, then go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to TaskPill. You only do this once.
    - Once it's running, TaskPill removes the "downloaded from the internet" mark from its own app (and nothing else), so macOS doesn't block the small helper inside it that Claude Code starts on each event.
 3. TaskPill asks **"Connect TaskPill to Claude Code?"** Click **Connect**.

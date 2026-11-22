@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 from taskpill import __repo__, __version__
 from taskpill.domain.updates import Release, parse_version
+from taskpill.release_files import is_windows_installer
 
 API = f"https://api.github.com/repos/{__repo__}/releases/latest"
 TIMEOUT = 8
@@ -52,8 +53,7 @@ def parse_release(data: object) -> Release | None:
     for asset in data.get("assets") or []:
         name = asset.get("name") if isinstance(asset, dict) else None
         url = asset.get("browser_download_url") if isinstance(asset, dict) else None
-        if isinstance(name, str) and name.startswith("TaskPill-Setup-") and \
-                name.endswith(".exe") and isinstance(url, str):
+        if isinstance(name, str) and is_windows_installer(name) and isinstance(url, str):
             installer, size = url, int(asset.get("size") or 0)
             break
     return Release(tag.lstrip("v"), page, installer, size)

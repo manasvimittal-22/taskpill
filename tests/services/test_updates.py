@@ -16,11 +16,11 @@ RELEASE_JSON = {
     "draft": False,
     "prerelease": False,
     "assets": [
-        {"name": "TaskPill-0.2.0-portable.zip", "size": 10,
+        {"name": "TaskPill-0.2.0-Windows-Portable.zip", "size": 10,
          "browser_download_url": "https://github.com/x/y/releases/download/v0.2.0/p.zip"},
-        {"name": "TaskPill-Setup-0.2.0.exe", "size": 20_000_000,
+        {"name": "TaskPill-Setup-0.2.0-Windows.exe", "size": 20_000_000,
          "browser_download_url":
-             "https://github.com/manasvimittal-22/taskpill/releases/download/v0.2.0/TaskPill-Setup-0.2.0.exe"},
+             "https://github.com/manasvimittal-22/taskpill/releases/download/v0.2.0/TaskPill-Setup-0.2.0-Windows.exe"},
     ],
 }
 
@@ -45,7 +45,7 @@ def test_at_most_once_a_day():
 def test_parse_release_picks_the_installer():
     r = gh.parse_release(RELEASE_JSON)
     assert r.version == "0.2.0"
-    assert r.installer_url.endswith("TaskPill-Setup-0.2.0.exe")
+    assert r.installer_url.endswith("TaskPill-Setup-0.2.0-Windows.exe")
     assert r.installer_size == 20_000_000
 
 

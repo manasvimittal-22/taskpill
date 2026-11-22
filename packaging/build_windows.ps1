@@ -1,7 +1,7 @@
 # Build TaskPill for Windows: icon -> PyInstaller folder -> Inno Setup installer.
 #   powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
-# Output: dist\TaskPill\ (the app folder), dist\TaskPill-Setup-<version>.exe and
-#         dist\TaskPill-<version>-portable.zip
+# Output: dist\TaskPill\ (the app folder), dist\TaskPill-Setup-<version>-Windows.exe and
+#         dist\TaskPill-<version>-Windows-Portable.zip (names: src/taskpill/release_files.py)
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
@@ -32,6 +32,6 @@ if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
 # app it's portable, so updates open the download page instead of an installer).
 & $python packaging\make_portable.py $version
 if ($LASTEXITCODE -ne 0) { throw "portable zip failed" }
-$zip = "dist\TaskPill-$version-portable.zip"
+$zip = "dist\TaskPill-$version-Windows-Portable.zip"
 
-Write-Host "Done: dist\TaskPill-Setup-$version.exe and $zip"
+Write-Host "Done: dist\TaskPill-Setup-$version-Windows.exe and $zip"

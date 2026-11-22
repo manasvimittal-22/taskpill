@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # What the public repo contains (paths relative to the repo root; folders recurse).
 INCLUDE = [
     "README.md", "LICENSE", "SECURITY.md", "pyproject.toml", ".gitignore", ".gitattributes",
-    ".github/workflows/ci.yml", ".github/workflows/release.yml",
+    ".github/workflows/ci.yml", ".github/workflows/release.yml", ".github/release-notes.md",
     "src", "hook", "tests",
     "docs/images",
     "packaging/make_icon.py", "packaging/make_sounds.py", "packaging/make_readme_images.py",

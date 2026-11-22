@@ -1,7 +1,8 @@
 #!/bin/sh
 # Build TaskPill for macOS: icon -> PyInstaller TaskPill.app -> ad-hoc signature -> .dmg
 #   sh packaging/build_macos.sh
-# Output: dist/TaskPill.app and dist/TaskPill-<version>-mac.dmg (Apple Silicon)
+# Output: dist/TaskPill.app and dist/TaskPill-<version>-Mac-AppleSilicon.dmg
+# (names: src/taskpill/release_files.py)
 #
 # No Apple Developer account, so the app is signed "ad hoc" (Apple Silicon refuses to
 # run unsigned code at all) and not notarized: the first open needs "Open Anyway" in
@@ -44,7 +45,7 @@ rm -rf "$STAGE"
 mkdir -p "$STAGE"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
-DMG="dist/TaskPill-$VERSION-mac.dmg"
+DMG="dist/TaskPill-$VERSION-Mac-AppleSilicon.dmg"
 rm -f "$DMG"
 hdiutil create -volname "TaskPill" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
 echo "Done: $DMG"

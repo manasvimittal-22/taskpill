@@ -13,11 +13,14 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from taskpill.release_files import windows_portable  # noqa: E402
 
 
 def main(version: str) -> Path:
     app = ROOT / "dist" / "TaskPill"
-    target = ROOT / "dist" / f"TaskPill-{version}-portable.zip"
+    target = ROOT / "dist" / windows_portable(version)
     target.unlink(missing_ok=True)
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for path in sorted(app.rglob("*")):
