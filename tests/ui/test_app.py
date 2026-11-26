@@ -189,8 +189,17 @@ def test_start_when_not_connected_opens_settings(qtbot, env):
     app.start()
     window = app._settings_window
     assert window is not None and window.isVisible()
-    assert window.status_text.text() == "Not connected"
+    assert window.status_text.text() == "Not connected to Claude Code"
     assert window.connect_button.text() == "Connect"
+    window.close()
+
+
+def test_connect_box_is_highlighted_only_when_not_connected(qtbot, env):
+    app, _, _ = build(qtbot, env)
+    window = app.open_settings()
+    assert window.connect_box.property("needsConnect") is True
+    window.set_connected(True)
+    assert window.connect_box.property("needsConnect") is False
     window.close()
 
 
@@ -322,8 +331,41 @@ def test_start_when_connected_refreshes_quietly(qtbot, env):
     app, _, _ = build(qtbot, env)
     app._connect()
     app.settings = Settings()  # connect_asked is False, but we're connected
-    app.start()
+    app.start(background=True)
     assert app._connect_dialog is None
+    assert app._settings_window is None  # a hook start stays quiet
+
+
+def test_user_start_when_connected_opens_settings(qtbot, env):
+    app, _, _ = build(qtbot, env)
+    app._connect()
+    app.start()  # the user double-clicked the app (bug 2026-11-26: nothing showed)
+    window = app._settings_window
+    assert window is not None and window.isVisible()
+    assert window.status_text.text() == "Connected to Claude Code"
+    window.close()
+
+
+def test_settings_request_from_a_second_launch(qtbot, env):
+    from taskpill.adapters.event_server import EventServer
+    from taskpill.adapters.runtime_file import (
+        RuntimeInfo,
+        ask_running_app_to_show_settings,
+        write_runtime,
+    )
+
+    app, _, _ = build(qtbot, env)
+    asked = []
+    server = EventServer(sink=lambda e: None, token="t" * 20, on_settings=lambda: asked.append(1))
+    port = server.start()
+    try:
+        path = env["claude"].parent / "runtime.json"
+        write_runtime(path, RuntimeInfo(port, server.token, 1, "0"))
+        assert ask_running_app_to_show_settings(path)
+        assert asked == [1]
+    finally:
+        server.stop()
+    assert not ask_running_app_to_show_settings(path)  # nobody is listening now
 
 
 def test_snapshots_are_published_for_the_vs_code_extension(qtbot, env):
@@ -381,11 +423,11 @@ def test_settings_and_tray_show_the_real_connection_after_an_outside_change(qtbo
     app, _, _ = build(qtbot, env)
     app._connect()
     window = app.open_settings()
-    assert window.status_text.text() == "Connected"
+    assert window.status_text.text() == "Connected to Claude Code"
     window.hide()
     app._installer.uninstall()  # e.g. another copy, or a manual edit
     window = app.open_settings()
-    assert window.status_text.text() == "Not connected"
+    assert window.status_text.text() == "Not connected to Claude Code"
     app.tray.menu_opening.emit()
     assert app.tray._connect_action.text() == "Connect to Claude Code"
 

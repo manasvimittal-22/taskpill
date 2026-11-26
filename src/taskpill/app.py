@@ -8,11 +8,12 @@ never touch the real ~/.claude/settings.json.
 from __future__ import annotations
 
 import contextlib
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import replace
 
-from PySide6.QtCore import QObject, QPoint, QRect, QTimer, QUrl, Signal
+from PySide6.QtCore import QObject, QPoint, QRect, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import QApplication
 
@@ -103,6 +104,9 @@ class TaskPillApp(QObject):
             on_cue=self._on_cue,
         )
         self.jump_requested.connect(self.jump_to_waiting)
+        self._own_activation_until = 0.0
+        if sys.platform == "darwin" and not demo:
+            app.applicationStateChanged.connect(self._on_app_state)
         self.driver = PlatformDriver(platform, self.row, self.controller)
         self.driver.set_hide_in_fullscreen(self.settings.hide_in_fullscreen)
         self.controller.set_needs_you_in_fullscreen(self.settings.needs_you_in_fullscreen)
@@ -206,8 +210,21 @@ class TaskPillApp(QObject):
         return self.row.begin_resize(session_id)
 
     def _activate_self(self) -> None:
+        self._own_activation_until = time.monotonic() + 1.0
         with contextlib.suppress(Exception):
             self._platform.activate_self()
+
+    def _on_app_state(self, state: Qt.ApplicationState) -> None:
+        """Mac: double-clicking the icon of a running .app just activates it (no second
+        process starts). We never activate ourselves except through ``_activate_self``, so
+        an activation we didn't ask for means the user opened the app: show Settings."""
+        if state != Qt.ApplicationState.ApplicationActive:
+            return
+        if time.monotonic() < self._own_activation_until:
+            return
+        if self._settings_window is not None and self._settings_window.isVisible():
+            return
+        self.open_settings()
 
     def _save_size(self, dims: Dims) -> None:
         self._save(replace(self.settings, pill_width=round(dims.width),
@@ -218,8 +235,11 @@ class TaskPillApp(QObject):
         self._save(replace(self.settings, pill_width=0, pill_height=round(HEIGHT)))
 
     # ---- startup -----------------------------------------------------------------------
-    def start(self) -> None:
-        """Refresh our hooks if connected; ask once if not. Check for updates soon."""
+    def start(self, background: bool = False) -> None:
+        """Refresh our hooks if connected; ask once if not. Check for updates soon.
+
+        ``background`` is a start by a Claude Code hook: stay quiet (tray icon only). A start
+        by the user (double-click) opens Settings, so something visibly happens."""
         if self._demo:
             return
         self._apply_hotkey()
@@ -229,6 +249,8 @@ class TaskPillApp(QObject):
         if self.is_connected():
             with contextlib.suppress(SettingsFileError, OSError):
                 self._installer.install()  # no-op unless TaskPill moved
+            if not background:
+                self.open_settings()
         else:
             # Not connected: open Settings, which has the Connect button, so a new user
             # sees what to do (Manasvi, 2026-11-17). Shown at every start until connected.

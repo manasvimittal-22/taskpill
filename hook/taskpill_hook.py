@@ -194,6 +194,8 @@ def launch(app: str, app_args: list[str]) -> bool:
     lock.parent.mkdir(parents=True, exist_ok=True)
     lock.write_text(str(os.getpid()), encoding="utf-8")
 
+    # A hook start is silent: only the tray icon. A start by the user opens Settings.
+    app_args = [*app_args, "--background"]
     quiet: dict[str, Any] = {
         "stdin": subprocess.DEVNULL,
         "stdout": subprocess.DEVNULL,

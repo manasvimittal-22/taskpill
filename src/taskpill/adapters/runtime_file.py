@@ -42,6 +42,25 @@ def read_runtime(path: Path) -> RuntimeInfo | None:
     return info
 
 
+def ask_running_app_to_show_settings(path: Path, timeout: float = 2.0) -> bool:
+    """A second copy was started by the user: ask the running one to open Settings.
+    True if it answered."""
+    import urllib.request
+
+    info = read_runtime(path)
+    if info is None:
+        return False
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{info.port}/settings", data=b"", method="POST",
+        headers={"X-TaskPill-Token": info.token},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as reply:  # noqa: S310 (127.0.0.1)
+            return reply.status == 204
+    except (OSError, ValueError):
+        return False
+
+
 def remove_runtime_if_owned(path: Path, pid: int) -> None:
     """Delete runtime.json at exit, unless a newer app instance has replaced it."""
     info = read_runtime(path)

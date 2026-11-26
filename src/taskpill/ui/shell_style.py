@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from taskpill.ui.theme import Palette
+from taskpill.ui.theme import Palette, qcolor
 
 
 def shell_stylesheet(pal: Palette) -> str:
@@ -10,6 +10,8 @@ def shell_stylesheet(pal: Palette) -> str:
     primary_text = "#15131F" if pal.dark else "#FFFFFF"
     border = "rgba(255,255,255,0.15)" if pal.dark else "rgba(0,0,0,0.18)"
     hover = "rgba(255,255,255,0.07)" if pal.dark else "rgba(0,0,0,0.05)"
+    accent = qcolor(pal.working)
+    tint = f"rgba({accent.red()},{accent.green()},{accent.blue()},{0.12 if pal.dark else 0.07})"
     return f"""
     QWidget#Shell {{ background: {pal.surface}; }}
     QWidget#Shell QLabel {{ color: {pal.text}; background: transparent; }}
@@ -31,6 +33,15 @@ def shell_stylesheet(pal: Palette) -> str:
         font-weight: 600;
     }}
     QPushButton[role="primary"]:hover {{ background: {pal.working}; border-color: {pal.text}; }}
+    QLabel[role="strong"] {{ font-size: 13px; font-weight: 600; }}
+    QFrame#rule {{ background: {border}; border: none; }}
+    QFrame#section {{ border: 1px solid {border}; border-radius: 10px; background: transparent; }}
+    QFrame#connectBox {{
+        border: 1px solid {border}; border-radius: 10px; background: transparent;
+    }}
+    QFrame#connectBox[needsConnect="true"] {{
+        border: 2px solid {pal.working}; background: {tint};
+    }}
     QToolTip {{
         background: {pal.surface}; color: {pal.text}; border: 1px solid {border};
         border-radius: 8px; padding: 6px 8px; font-size: 12px;

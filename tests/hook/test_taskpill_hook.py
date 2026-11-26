@@ -203,6 +203,13 @@ def test_launch_cooldown_prevents_a_storm(monkeypatch, isolated_config):
     assert len(started) == 2
 
 
+def test_hook_launch_is_marked_background(monkeypatch, isolated_config):
+    started = []
+    monkeypatch.setattr(hook.subprocess, "Popen", lambda cmd, **k: started.append(cmd))
+    hook.launch("TaskPill.exe", ["-m", "x"])
+    assert started[0][-1] == "--background"
+
+
 def test_errors_are_logged_not_raised(monkeypatch, isolated_config):
     def boom(_payload):
         raise RuntimeError("kaboom")

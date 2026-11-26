@@ -3,6 +3,8 @@
 Endpoints (all need the ``X-TaskPill-Token`` header):
     POST /event    one hook event (JSON)          → 204, or 400/401/403/411/413
     POST /click    {"session_id": "…"}            → 204: same as clicking that pill
+    POST /settings (empty body)                   → 204: open the Settings window
+                                                    (a second launch of the app asks this)
     GET  /health   {"app": "taskpill", ...}       → 200
     GET  /stream   Server-Sent Events: the latest snapshot, then every change
 
@@ -87,11 +89,13 @@ class EventServer:
         port: int = 0,
         keepalive_seconds: float = KEEPALIVE_SECONDS,
         on_click: Callable[[str], None] | None = None,
+        on_settings: Callable[[], None] | None = None,
     ) -> None:
         if len(token) < 16:
             raise ValueError("token is too short")
         self._sink = sink
         self._on_click = on_click
+        self._on_settings = on_settings
         self._token = token
         self._host = host
         self._requested_port = port
@@ -159,6 +163,8 @@ def _make_handler(server: EventServer) -> type[BaseHTTPRequestHandler]:
                 self._handle_event()
             elif self.path == "/click" and server._on_click is not None:
                 self._handle_click()
+            elif self.path == "/settings" and server._on_settings is not None:
+                self._handle_settings()
             else:
                 self._reply(HTTPStatus.NOT_FOUND)
 
@@ -200,6 +206,17 @@ def _make_handler(server: EventServer) -> type[BaseHTTPRequestHandler]:
                 self._reply(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, close=True)
                 return None
             return self.rfile.read(length)
+
+        def _handle_settings(self) -> None:
+            body = self._read_body()  # no content needed; read it to keep the socket tidy
+            if body is None:
+                return
+            try:
+                server._on_settings()
+            except Exception:
+                self._reply(HTTPStatus.INTERNAL_SERVER_ERROR)
+                return
+            self._reply(HTTPStatus.NO_CONTENT)
 
         def _handle_click(self) -> None:
             body = self._read_body()
