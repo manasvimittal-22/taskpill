@@ -7,6 +7,7 @@ tells you the moment it needs you, and lets you know when it's done.</p>
 <p align="center">
   <a href="../../releases/latest"><b>Download for Windows or Mac</b></a> ·
   <a href="#on-your-taskbar">What it shows</a> ·
+  <a href="#on-a-mac">On a Mac</a> ·
   <a href="#privacy">Privacy</a>
 </p>
 
@@ -31,14 +32,25 @@ You give Claude Code a task and switch to something else. Then you keep checking
 
 With two or more sessions, each becomes a small circle: the % while it works, **?** when it needs you, **✓** when it's done, **‖** when it's out of usage. Hover any circle for the full story.
 
+## On a Mac
+
+<p align="center"><img src="docs/images/mac.png" alt="On a Mac: the TaskPill pill in the menu bar just right of the notch, showing 'taskpill  Editing login.py  42%', with a card under it showing the prompt, the step and how long it has been running." width="820"></p>
+
+On a Mac the pill lives in the menu bar, just right of the notch (or where the notch would be on a screen without one). It's sized to fit the bar and stops before your menu-bar icons. Hover it for the same card, which opens under the bar.
+
+<p align="center"><img src="docs/images/mac-sessions.png" alt="Four sessions as circles in the Mac menu bar right of the notch: 42%, a question mark that needs you, a check that's done, and a pause mark that's out of usage." width="820"></p>
+
+A Mac starts with the compact circle, so it takes little room next to the notch. Right-click it → **Resize…** for a full pill like the one above. Everything else works as on Windows: the colors, the sounds, the jump shortcut (**Control+Option+Space**), and a click that brings the session's app forward.
+
 ## One click to the right window
 
 Click a pill and that session's VS Code window or terminal comes to the front, even from a full-screen video or game. Over full-screen apps TaskPill stays out of the way; only a session that needs you pops up (you can turn that off too).
 
 ## Make it yours
 
-<p align="center"><img src="docs/images/settings.png" alt="TaskPill settings in two columns: alerts, colors for each state, motion and sounds on the left; full screen, quitting when idle, the Claude Code connection, and position and size on the right." width="820"></p>
+<p align="center"><img src="docs/images/settings.png" alt="TaskPill settings: a live preview of the pills at the top, the Claude Code connection under it, then boxed sections: colors for each state, alerts, sounds and motion on the left; full screen, shortcuts, quitting when idle and updates on the right; Reset position, Reset size and Quit at the bottom." width="820"></p>
 
+- **A live preview** at the top of Settings shows your pills as you change them.
 - **Colors** for each state: working, needs you, done and out of usage.
 - **Size:** right-click → Resize… and drag. Make it wider, taller, or a single circle.
 - **Sounds, glow and dot:** each can be switched off.
@@ -53,7 +65,7 @@ Click a pill and that session's VS Code window or terminal comes to the front, e
 3. TaskPill asks **"Connect TaskPill to Claude Code?"** Click **Connect**. It adds a few hooks to `~/.claude/settings.json`, after making a backup.
 4. Use Claude Code as usual, in VS Code or a terminal. The pill appears next to the **^** arrow on your taskbar.
 
-You never need to start TaskPill yourself: Claude Code starts it when a session begins, and it quits after 10 quiet minutes.
+You never need to start TaskPill yourself: Claude Code starts it when a session begins, and it quits after 10 quiet minutes. Open TaskPill from the Start menu any time to see Settings, even while it's already running.
 
 **Updates:** once a day TaskPill checks for a new version. When there is one, the tray icon tells you, and one click downloads and installs it (your settings stay). You can turn this off in Settings.
 
@@ -68,7 +80,7 @@ You never need to start TaskPill yourself: Claude Code starts it when a session 
 4. Use Claude Code as usual, in Terminal, iTerm2 or VS Code. The pill appears in the menu bar, just right of the notch (or right of the middle of the screen if there's no notch). It stays as tall as the menu bar and stops before your menu-bar icons.
 
 What's different on a Mac:
-- There's no Dock icon. TaskPill lives in the menu bar: click its ring icon for Settings.
+- There's no Dock icon. TaskPill lives in the menu bar: click its ring icon for Settings, or open TaskPill from Applications again.
 - The pill starts as a small circle next to the notch. Right-click it → **Resize…** for a full pill.
 - Clicking a pill brings that session's app forward (Terminal, iTerm2, VS Code). If the app has several windows, macOS brings its front one; TaskPill can't pick one exact window without the Accessibility permission, which it doesn't ask for.
 - The jump shortcut is **Control+Option+Space**.

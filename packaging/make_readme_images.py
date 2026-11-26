@@ -272,6 +272,109 @@ def vscode() -> None:
     save(image, "vscode.png")
 
 
+MAC_BAR = 37  # a notched MacBook's menu bar, in points
+MAC_NOTCH_W = 200
+MAC_GAP = 8  # between the notch and the row (platform/base.py NOTCH_GAP)
+
+
+def mac_pills(models: list[PillModel], dims: g.Dims) -> QImage:
+    """The real row as macOS sets it up: grows right from the notch, fitted to the bar."""
+    clock = _Clock()
+    # expand_needs_you is off by default (Settings: "Open circles to show the message").
+    row = PillRow(RowOptions(anchor=g.Anchor.LEFT, circle_by_default=True,
+                             expand_needs_you=False), DARK, clock=clock, dims=dims)
+    row.set_bar_height(round(MAC_BAR - 2 * max(2.0, MAC_BAR * 0.08)))
+    row.set_anchor(QPoint(600, 600))
+    row.set_models(models)
+    clock.t += 5
+    row._tick()
+    image = row.grab().toImage()
+    row.deleteLater()
+    return image
+
+
+def mac_bar(p: QPainter, w: float, notch_left: float) -> float:
+    """A plain macOS-like menu bar, cropped to the notch and the right side: the notch,
+    then simple status glyphs and a clock (no real icons, no logos). Returns the x where
+    TaskPill's row starts."""
+    h = MAC_BAR
+    p.fillRect(QRectF(0, 0, w, h), QColor(24, 25, 30, 235))
+    p.fillRect(QRectF(0, h - 1, w, 1), QColor(255, 255, 255, 14))
+    notch = QPainterPath()
+    notch.addRoundedRect(QRectF(notch_left, -12, MAC_NOTCH_W, h + 12), 11, 11)
+    p.fillPath(notch, QColor("#000000"))
+    ink = QColor("#E8E8EA")
+    p.setPen(ink)
+    p.setFont(ui_font(13))
+    x = 18  # plain menu words left of the notch (no app name, no logo)
+    for word in ("File", "Edit", "View", "Window"):
+        ww = p.fontMetrics().horizontalAdvance(word)
+        if x + ww > notch_left - 12:
+            break
+        p.drawText(QRectF(x, 0, ww, h), Qt.AlignmentFlag.AlignVCenter, word)
+        x += ww + 20
+    right = w - 16
+    clock_text = "Thu 26 Nov  4:12 PM"
+    tw = p.fontMetrics().horizontalAdvance(clock_text)
+    p.drawText(QRectF(right - tw, 0, tw, h), Qt.AlignmentFlag.AlignVCenter, clock_text)
+    pen = QPen(ink, 1.4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+    p.setPen(pen)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    cy = h / 2
+    bx = right - tw - 46  # battery
+    p.drawRoundedRect(QRectF(bx, cy - 5.5, 24, 11), 3, 3)
+    p.fillRect(QRectF(bx + 2.5, cy - 3, 15, 6), ink)
+    p.drawLine(QPointF(bx + 26.5, cy - 2), QPointF(bx + 26.5, cy + 2))
+    wx = bx - 26  # wifi
+    for r in (2.5, 6.0, 9.5):
+        p.drawArc(QRectF(wx - r, cy + 5 - r, 2 * r, 2 * r), 50 * 16, 80 * 16)
+    return notch_left + MAC_NOTCH_W + MAC_GAP
+
+
+def mac_desktop(p: QPainter, w: float, h: float) -> None:
+    sky = QLinearGradient(0, 0, w, h)
+    sky.setColorAt(0, QColor("#2A2440"))
+    sky.setColorAt(1, QColor("#141722"))
+    p.fillRect(QRectF(0, 0, w, h), sky)
+
+
+def place_row_left(p: QPainter, row: QImage, left_x: float, center_y: float) -> QRectF:
+    w, h = logical(row)
+    rect = QRectF(left_x - g.MARGIN, center_y - h / 2, w, h)
+    p.drawImage(rect, row)
+    return rect
+
+
+def mac() -> None:
+    """The pill in the Mac menu bar right of the notch, with its card under it."""
+    w, h = 900, 142
+    image, p = canvas(w, h)
+    rounded_clip(p, w, h)
+    mac_desktop(p, w, h)
+    start = mac_bar(p, w, notch_left=150)
+    rect = place_row_left(p, mac_pills([WORKING], g.DEFAULT), start, MAC_BAR / 2)
+    c = card(DARK, WORKING)
+    cw, ch = logical(c)
+    pill_center = rect.left() + g.MARGIN + g.FULL_WIDTH / 2
+    p.drawImage(QRectF(pill_center - cw / 2, MAC_BAR - 2, cw, ch), c)
+    p.end()
+    save(image, "mac.png")
+
+
+def mac_sessions() -> None:
+    """A Mac starts with circles: one session, then several."""
+    w, h = 900, 44
+    image, p = canvas(w, h)
+    rounded_clip(p, w, h, 10)
+    mac_desktop(p, w, h)
+    start = mac_bar(p, w, notch_left=150)
+    many = [model("a", PillKind.WORKING, "x", 42), model("b", PillKind.NEEDS_YOU, "x", 17),
+            model("c", PillKind.DONE, "Done", 100), model("d", PillKind.LIMITED, "x", 63)]
+    place_row_left(p, mac_pills(many, g.default_dims(True)), start, MAC_BAR / 2)
+    p.end()
+    save(image, "mac-sessions.png")
+
+
 def settings() -> None:
     window = SettingsWindow(Settings(), DARK, connected=True)
     window.adjustSize()
@@ -291,6 +394,8 @@ def main() -> None:
     sessions()
     # vscode()  # the extension is on hold (2026-11-17); its picture isn't in the README
     settings()
+    mac()
+    mac_sessions()
 
 
 if __name__ == "__main__":
